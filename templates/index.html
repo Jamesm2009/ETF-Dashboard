@@ -413,16 +413,6 @@ function cellVal(cell) {
 function toggleCol(cls) {
   document.querySelectorAll("."+cls).forEach(el => el.classList.toggle("col-hidden"));
 }
-function doRefresh() {
-  const btn = document.querySelector(".btn-refresh");
-  btn.textContent = "⏳ Starting...";
-  btn.style.opacity = ".6";
-  fetch("/refresh").then(r=>r.json()).then(()=>{
-    btn.textContent = "✓ Reload in 15s";
-    setTimeout(()=>location.reload(), 15000);
-  }).catch(()=>{ btn.textContent="✗ Error"; btn.style.opacity="1"; });
-  return false;
-}
 </script>
 </body>
 </html>
