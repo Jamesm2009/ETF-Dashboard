@@ -1,9 +1,8 @@
 """
 ETF Performance Dashboard — Tiingo data source
-70 ETFs | single-phase loader | 3s gap between requests
+File-based cache survives Render free-tier spindowns.
+Resumes from last saved fund after rate limit restart.
 RS Score: (1D×0.10) + (1W×0.20) + (1M×0.30) + (3M×0.40)
-Expense ratio and fund type loaded from funds.json (update manually).
-Set env var TIINGO_TOKEN in Render → Environment.
 """
 
 from flask import Flask, render_template, jsonify
@@ -11,14 +10,17 @@ import requests
 import pandas as pd
 import threading
 import time
+import json, os
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
-import json, os
 
-app   = Flask(__name__)
-CT    = ZoneInfo("America/Chicago")
+app  = Flask(__name__)
+CT   = ZoneInfo("America/Chicago")
+
 TIINGO_TOKEN = os.environ.get("TIINGO_TOKEN", "")
 TIINGO_BASE  = "https://api.tiingo.com/tiingo/daily"
+CACHE_FILE   = "/tmp/etf_cache.json"   # persists across requests, lost on spindown
+PROGRESS_FILE= "/tmp/etf_progress.json" # tracks which funds are done
 
 cache = {
     "data": {}, "ranked": [], "last_updated": "Loading...",
@@ -32,6 +34,50 @@ _started = False
 def load_funds():
     with open("funds.json", "r") as f:
         return json.load(f)
+
+
+def save_cache_to_file():
+    """Save current data to file so it survives spindowns."""
+    try:
+        payload = {
+            "data":         cache["data"],
+            "last_updated": cache["last_updated"],
+            "vix_signal":   cache["vix_signal"],
+            "vix9d_value":  str(cache["vix9d_value"]),
+            "vix_value":    str(cache["vix_value"]),
+            "phase":        cache["phase"],
+        }
+        with open(CACHE_FILE, "w") as f:
+            json.dump(payload, f)
+    except Exception as e:
+        print(f"  Cache save error: {e}")
+
+
+def load_cache_from_file():
+    """Restore data from file after a spindown restart."""
+    try:
+        if not os.path.exists(CACHE_FILE):
+            return False
+        with open(CACHE_FILE, "r") as f:
+            payload = json.load(f)
+        cache["data"]         = payload.get("data", {})
+        cache["last_updated"] = payload.get("last_updated", "—")
+        cache["vix_signal"]   = payload.get("vix_signal", "grey")
+        cache["vix9d_value"]  = payload.get("vix9d_value", "—")
+        cache["vix_value"]    = payload.get("vix_value", "—")
+        cache["phase"]        = payload.get("phase", 0)
+        rebuild_ranked()
+        loaded = len(cache["data"])
+        print(f"  Restored {loaded} funds from file cache.")
+        return loaded > 0
+    except Exception as e:
+        print(f"  Cache load error: {e}")
+        return False
+
+
+def get_completed_symbols():
+    """Return set of symbols already successfully fetched."""
+    return set(cache["data"].keys())
 
 
 # ── Tiingo ────────────────────────────────────────────────────────────────────
@@ -55,6 +101,7 @@ def tiingo_history(symbol, years=3):
                 print(f"    429 {symbol} — {msg}")
                 with _lock:
                     cache["progress"] = msg
+                    save_cache_to_file()   # save before long wait
                 time.sleep(wait_secs)
                 continue
             if r.status_code == 404:
@@ -136,8 +183,7 @@ def price_bar_data(closes):
         return None, None, None, None
     lo, hi = round(c.min(), 2), round(c.max(), 2)
     last   = round(c.iloc[-1], 2)
-    rng    = hi - lo
-    pct    = round((last - lo) / rng * 100, 1) if rng > 0 else 50.0
+    pct    = round((last - lo) / (hi - lo) * 100, 1) if hi > lo else 50.0
     return lo, hi, last, pct
 
 
@@ -153,7 +199,7 @@ def rebuild_ranked():
     cache["ranked"] = scored + unscored
 
 
-# ── VIX signal ────────────────────────────────────────────────────────────────
+# ── VIX ───────────────────────────────────────────────────────────────────────
 
 def fetch_vix():
     try:
@@ -164,34 +210,40 @@ def fetch_vix():
             return "grey", "—", "—"
         v9  = round(df_vixy["adjClose"].dropna().iloc[-1], 2)
         vix = round(df_vxx["adjClose"].dropna().iloc[-1],  2)
-        sig = "grey" if abs(v9 - vix) < 0.10 else ("red" if v9 > vix else "green")
+        sig = "grey" if abs(v9-vix) < 0.10 else ("red" if v9 > vix else "green")
         return sig, v9, vix
     except Exception as e:
         print(f"  VIX error: {e}")
         return "grey", "—", "—"
 
 
-# ── Main update ───────────────────────────────────────────────────────────────
+# ── Main update — skips already-loaded funds ──────────────────────────────────
 
 def run_update():
     with _lock:
-        cache["phase"]    = 1
-        cache["progress"] = "Starting — waiting 15s..."
-        cache["error"]    = None
+        cache["phase"]   = 1
+        cache["error"]   = None
 
     time.sleep(15)
 
     try:
         if not TIINGO_TOKEN:
             with _lock:
-                cache["error"] = "TIINGO_TOKEN not set in Render Environment."
+                cache["error"] = "TIINGO_TOKEN not set."
                 cache["phase"] = 4
             return
 
-        funds = load_funds()
-        total = len(funds)
+        funds     = load_funds()
+        total     = len(funds)
+        completed = get_completed_symbols()
+        remaining = [f for f in funds if f["symbol"] not in completed]
 
-        for i, fund in enumerate(funds):
+        if completed:
+            print(f"  Resuming: {len(completed)} already loaded, {len(remaining)} remaining")
+            with _lock:
+                cache["progress"] = f"Resuming — {len(completed)} done, {len(remaining)} to go..."
+
+        for i, fund in enumerate(remaining):
             ticker   = fund["symbol"]
             name     = fund.get("name", ticker)
             category = fund.get("category", "equity")
@@ -199,14 +251,15 @@ def run_update():
             exp      = fund.get("exp_ratio", None)
             ms_url   = f"https://www.morningstar.com/etfs/arcx/{ticker.lower()}/quote"
 
+            done_count = len(get_completed_symbols())
             with _lock:
-                cache["progress"] = f"Loading {i+1}/{total}: {ticker}"
-            print(f"  [{i+1}/{total}] {ticker}")
+                cache["progress"] = f"Loading {done_count+1}/{total}: {ticker}"
+            print(f"  [{done_count+1}/{total}] {ticker}")
 
             try:
                 df = tiingo_history(ticker, years=3)
                 if df is None or df.empty:
-                    print(f"    skip — no data")
+                    print(f"    skip")
                     time.sleep(3)
                     continue
 
@@ -224,23 +277,20 @@ def run_update():
                 m6  = period_return(closes, 182)
                 ytd = ytd_return(closes)
                 y1  = period_return(closes, 365)
-
-                rs = None
+                rs  = None
                 if all(v is not None for v in [d1, w1, m1, m3]):
                     rs = (d1*0.10)+(w1*0.20)+(m1*0.30)+(m3*0.40)
 
                 zsc   = zscore_1yr(closes)
                 ob_os = ("Overbought" if zsc and zsc > 2.10
                          else "Oversold" if zsc and zsc < -2.05 else "")
-
                 lo, hi, last_px, bar_pct = price_bar_data(closes)
 
                 with _lock:
                     cache["data"][ticker] = {
                         "symbol": ticker, "name": name,
                         "type": ftype, "category": category,
-                        "morningstar_url": ms_url,
-                        "exp_ratio": exp,
+                        "morningstar_url": ms_url, "exp_ratio": exp,
                         "sparkline":   make_sparkline(closes),
                         "1D": fmt(d1), "1W": fmt(w1), "1M": fmt(m1),
                         "3M": fmt(m3), "6M": fmt(m6), "YTD": fmt(ytd), "1Y": fmt(y1),
@@ -253,8 +303,9 @@ def run_update():
                     }
                     rebuild_ranked()
                     cache["last_updated"] = datetime.now(CT).strftime("%-m/%-d/%y %H:%M CT")
+                    save_cache_to_file()
 
-                print(f"    OK  rs={'%.2f'%rs if rs else 'n/a'}")
+                print(f"    OK")
 
             except Exception as e:
                 print(f"    ERR {ticker}: {e}")
@@ -273,8 +324,9 @@ def run_update():
             cache["phase"]        = 4
             cache["progress"]     = "Complete"
             cache["last_updated"] = datetime.now(CT).strftime("%-m/%-d/%y %H:%M CT")
+            save_cache_to_file()
 
-        print(f"Done — {len(cache['data'])} ETFs | VIX={sig}")
+        print(f"Done — {len(cache['data'])} ETFs loaded.")
 
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -291,7 +343,15 @@ def _ensure_started():
     global _started
     if not _started:
         _started = True
-        trigger_update()
+        # Try to restore from file first
+        restored = load_cache_from_file()
+        if restored and cache["phase"] == 4:
+            print("  Full cache restored — skipping reload.")
+            with _lock:
+                cache["progress"] = "Restored from cache"
+        else:
+            # Either fresh start or incomplete — resume loading
+            trigger_update()
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -313,8 +373,18 @@ def index():
 
 @app.route("/refresh")
 def refresh():
+    # Clear cache file to force full reload
+    try:
+        if os.path.exists(CACHE_FILE):
+            os.remove(CACHE_FILE)
+        with _lock:
+            cache["data"]    = {}
+            cache["ranked"]  = []
+            cache["phase"]   = 0
+    except Exception:
+        pass
     trigger_update()
-    return jsonify({"status": "refresh started"})
+    return jsonify({"status": "full refresh started"})
 
 
 @app.route("/status")
@@ -354,4 +424,3 @@ def api_data():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
-
