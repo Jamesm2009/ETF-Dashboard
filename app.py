@@ -310,7 +310,7 @@ def run_update():
             name     = fund.get("name", ticker)
             category = fund.get("category", "equity")
             ftype    = fund.get("type", "")
-            ms_url   = f"https://www.morningstar.com/etfs/arcx/{ticker.lower()}/quote"
+            ms_url   = f"https://www.morningstar.com/etfs/arcx/{ticker.lower()}/chart" 
             ttm      = fund.get("ttm_yield", None)
 
             done_count = len(completed)
