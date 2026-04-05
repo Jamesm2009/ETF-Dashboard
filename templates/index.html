@@ -134,12 +134,12 @@ tr.cat-currency    { background: var(--cur-bg); }
 tr.cat-thematic    { background: var(--the-bg); }
 tr.cat-alternative { background: var(--alt-bg); }
 
-td { padding: 5px 6px; white-space: nowrap; vertical-align: middle; }
+td { padding: 3px 3px; white-space: nowrap; vertical-align: middle; }
 td.rank  { font-weight: 800; font-size: 14px; color: var(--gold); text-align: center; width: 30px; }
 td.sym a { font-weight: 700; font-size: 13px; font-family: 'Courier New', monospace; color: var(--accent); text-decoration: none; }
 td.sym a:hover { text-decoration: underline; }
 td.fname { max-width: 180px; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
-td.ftype { max-width: 270px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+td.ftype { max-width: 160px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
 td.spark { padding: 3px 5px; }
 td.num   { text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; min-width: 46px; }
 td.na    { text-align: right; color: var(--muted); }
@@ -290,7 +290,7 @@ footer { text-align: center; padding: 16px; color: var(--muted); font-size: 11px
       <th onclick="sortTable(15)" data-col="15" class="col-hidden zsc-col">Z-Score</th>
       <th onclick="sortTable(16)" data-col="16" class="col-hidden obos-col">OB / OS</th>
       <th onclick="sortTable(17)" data-col="17">1Mth</th>
-      <th onclick="sortTable(18)" data-col="18">3MthM</th>
+      <th onclick="sortTable(18)" data-col="18">3Mth</th>
     </tr>
   </thead>
   <tbody>
@@ -363,8 +363,8 @@ footer { text-align: center; padding: 16px; color: var(--muted); font-size: 11px
       {% else %}<span style="color:var(--muted)">—</span>{% endif %}
     </td>
 
-    <td class="flag-cell" title="±1M: vs 21-day SMA"><span class="fc fc-{{ f.trade_flag }}"></span></td>
-    <td class="flag-cell" title="±3M: vs 63-day SMA"><span class="fc fc-{{ f.trend_flag }}"></span></td>
+    <td class="flag-cell" title="1Mth: vs 21-day SMA Trend"><span class="fc fc-{{ f.trade_flag }}"></span></td>
+    <td class="flag-cell" title="3thM: vs 63-day SMA Trend"><span class="fc fc-{{ f.trend_flag }}"></span></td>
   </tr>
   {% endfor %}
   </tbody>
