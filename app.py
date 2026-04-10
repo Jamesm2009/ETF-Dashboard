@@ -13,6 +13,8 @@ import time
 import json, os
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
+from risk_indicator import get_risk_indicator
+
 
 app = Flask(__name__)
 CT  = ZoneInfo("America/Chicago")
@@ -479,7 +481,15 @@ def api_data():
     with _lock:
         return jsonify(cache["ranked"])
 
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
+
+from risk_indicator import get_risk_indicator   # ← also add this near top imports
+@app.route(’/risk-indicator’)
+def risk_indicator_page():
+“”“Serve the Risk On/Off indicator page.”””
+return render_template(‘risk_indicator.html’)
+@app.route(’/api/risk-indicator’)
+def api_risk_indicator():
+“””
