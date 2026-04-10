@@ -1,8 +1,8 @@
 """
-ETF Performance Dashboard — Tiingo + Upstash Redis cache
+ETF Performance Dashboard - Tiingo + Upstash Redis cache
 Redis cache survives Render spindowns and is shared across all browsers/devices.
 Daily refresh via /refresh. Serves from cache instantly on repeat visits.
-RS Score: (1D×0.10) + (1W×0.20) + (1M×0.30) + (3M×0.40)
+RS Score: (1D x 0.10) + (1W x 0.20) + (1M x 0.30) + (3M x 0.40)
 """
 
 from flask import Flask, render_template, jsonify
@@ -13,7 +13,7 @@ import time
 import json, os
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
-from risk_indicator import get_risk_indicator
+from risk_indicator import refresh_risk_data, get_cached_risk
 
 
 app = Flask(__name__)
@@ -28,7 +28,6 @@ REDIS_KEY_PRG = "etf_dashboard_progress"
 
 cache = {
     "data": {}, "ranked": [], "last_updated": "Loading...",
-    "vix_signal": "grey", "vix9d_value": "—", "vix_value": "—",
     "phase": 0, "progress": "Starting...", "error": None,
 }
 _lock    = threading.Lock()
@@ -50,14 +49,16 @@ def redis_set(key, value, ex_seconds=90000):
         payload = json.dumps(value)
         r = requests.post(
             REDIS_URL,
-            headers={"Authorization": f"Bearer {REDIS_TOKEN}",
-                     "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {REDIS_TOKEN}",
+                "Content-Type": "application/json",
+            },
             json=["SET", key, payload, "EX", ex_seconds],
             timeout=10
         )
         return r.status_code == 200
     except Exception as e:
-        print(f"  Redis SET error: {e}")
+        print(f"   SET error: {e}")
         return False
 
 
@@ -68,8 +69,10 @@ def redis_get(key):
     try:
         r = requests.post(
             REDIS_URL,
-            headers={"Authorization": f"Bearer {REDIS_TOKEN}",
-                     "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {REDIS_TOKEN}",
+                "Content-Type": "application/json",
+            },
             json=["GET", key],
             timeout=10
         )
@@ -90,8 +93,10 @@ def redis_del(key):
     try:
         requests.post(
             REDIS_URL,
-            headers={"Authorization": f"Bearer {REDIS_TOKEN}",
-                     "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {REDIS_TOKEN}",
+                "Content-Type": "application/json",
+            },
             json=["DEL", key],
             timeout=10
         )
@@ -100,13 +105,10 @@ def redis_del(key):
 
 
 def save_to_redis():
-    """Save full cache to Redis."""
+    """Save full ETF cache to Redis."""
     payload = {
         "data":         cache["data"],
         "last_updated": cache["last_updated"],
-        "vix_signal":   cache["vix_signal"],
-        "vix9d_value":  str(cache["vix9d_value"]),
-        "vix_value":    str(cache["vix_value"]),
         "phase":        cache["phase"],
     }
     ok = redis_set(REDIS_KEY_MF, payload)
@@ -114,17 +116,14 @@ def save_to_redis():
 
 
 def load_from_redis():
-    """Restore cache from Redis. Returns True if full cache found."""
+    """Restore ETF cache from Redis. Returns True if full cache found."""
     print("  Checking Redis for cached data...")
     payload = redis_get(REDIS_KEY_MF)
     if not payload:
         print("  No Redis cache found.")
         return False
     cache["data"]         = payload.get("data", {})
-    cache["last_updated"] = payload.get("last_updated", "—")
-    cache["vix_signal"]   = payload.get("vix_signal", "grey")
-    cache["vix9d_value"]  = payload.get("vix9d_value", "—")
-    cache["vix_value"]    = payload.get("vix_value", "—")
+    cache["last_updated"] = payload.get("last_updated", "-")
     cache["phase"]        = payload.get("phase", 0)
     rebuild_ranked()
     n = len(cache["data"])
@@ -161,8 +160,8 @@ def tiingo_history(symbol, years=3):
                 next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
                 wait_secs = int((next_hour - now).total_seconds()) + 120
                 resume_at = (now + timedelta(seconds=wait_secs)).strftime("%H:%M")
-                msg = f"Rate limit — resuming at {resume_at} CT ({wait_secs//60} min)"
-                print(f"    429 {symbol} — {msg}")
+                msg = f"Rate limit - resuming at {resume_at} CT ({wait_secs//60} min)"
+                print(f"    429 {symbol} - {msg}")
                 with _lock:
                     cache["progress"] = msg
                     save_to_redis()
@@ -178,7 +177,7 @@ def tiingo_history(symbol, years=3):
             df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None)
             return df.set_index("date").sort_index()
         except requests.exceptions.Timeout:
-            print(f"    timeout {symbol} — retrying in 10s")
+            print(f"    timeout {symbol} - retrying in 10s")
             time.sleep(10)
 
 
@@ -230,22 +229,29 @@ def make_sparkline(closes, days=170, w=90, h=28):
     if mn == mx:
         return ""
     n   = len(tail) - 1
-    pts = [f"{round(i/n*w,1)},{round((1-(v-mn)/(mx-mn))*(h-2)+1,1)}"
-           for i, v in enumerate(tail)]
+    pts = [
+        f"{round(i/n*w,1)},{round((1-(v-mn)/(mx-mn))*(h-2)+1,1)}"
+        for i, v in enumerate(tail)
+    ]
     sma63 = c.tail(63).mean() if len(c) >= 63 else c.mean()
     col   = "#16a34a" if c.iloc[-1] > sma63 else "#dc2626"
     sma_pts = []
     for i, v in enumerate(tail):
         window = tail[max(0, i-62):i+1]
         sv = window.mean()
-        sma_pts.append(f"{round(i/n*w,1)},{round((1-(sv-mn)/(mx-mn))*(h-2)+1,1)}")
-    return (f'<svg width="{w}" height="{h}" viewBox="0 0 {w} {h}" '
-            f'xmlns="http://www.w3.org/2000/svg">'
-            f'<polyline points="{" ".join(sma_pts)}" fill="none" stroke="#9ca3af" '
-            f'stroke-width="1" stroke-dasharray="2,2" stroke-linejoin="round" stroke-linecap="round"/>'
-            f'<polyline points="{" ".join(pts)}" fill="none" stroke="{col}" '
-            f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>'
-            f'</svg>')
+        sma_pts.append(
+            f"{round(i/n*w,1)},{round((1-(sv-mn)/(mx-mn))*(h-2)+1,1)}"
+        )
+    return (
+        f'<svg width="{w}" height="{h}" viewBox="0 0 {w} {h}" '
+        f'xmlns="http://www.w3.org/2000/svg">'
+        f'<polyline points="{" ".join(sma_pts)}" fill="none" stroke="#9ca3af" '
+        f'stroke-width="1" stroke-dasharray="2,2" '
+        f'stroke-linejoin="round" stroke-linecap="round"/>'
+        f'<polyline points="{" ".join(pts)}" fill="none" stroke="{col}" '
+        f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>'
+        f'</svg>'
+    )
 
 
 def price_bar_data(closes):
@@ -260,8 +266,11 @@ def price_bar_data(closes):
 
 def rebuild_ranked():
     rows     = list(cache["data"].values())
-    scored   = sorted([r for r in rows if r.get("rs_score") is not None],
-                      key=lambda x: x["rs_score"], reverse=True)
+    scored   = sorted(
+        [r for r in rows if r.get("rs_score") is not None],
+        key=lambda x: x["rs_score"],
+        reverse=True
+    )
     unscored = [r for r in rows if r.get("rs_score") is None]
     for i, r in enumerate(scored):
         r["rank"] = i + 1
@@ -270,30 +279,12 @@ def rebuild_ranked():
     cache["ranked"] = scored + unscored
 
 
-# ── VIX ───────────────────────────────────────────────────────────────────────
-
-def fetch_vix():
-    try:
-        df_vixy = tiingo_history("VIXY", years=0.1)
-        time.sleep(3)
-        df_vxx  = tiingo_history("VXX",  years=0.1)
-        if df_vixy is None or df_vxx is None or df_vixy.empty or df_vxx.empty:
-            return "grey", "—", "—"
-        v9  = round(df_vixy["adjClose"].dropna().iloc[-1], 2)
-        vix = round(df_vxx["adjClose"].dropna().iloc[-1],  2)
-        sig = "grey" if abs(v9-vix) < 0.10 else ("red" if v9 > vix else "green")
-        return sig, v9, vix
-    except Exception as e:
-        print(f"  VIX error: {e}")
-        return "grey", "—", "—"
-
-
 # ── Main update ───────────────────────────────────────────────────────────────
 
 def run_update():
     with _lock:
-        cache["phase"]  = 1
-        cache["error"]  = None
+        cache["phase"] = 1
+        cache["error"] = None
 
     time.sleep(10)
 
@@ -312,7 +303,9 @@ def run_update():
         if completed:
             print(f"  Resuming: {len(completed)} done, {len(remaining)} remaining")
             with _lock:
-                cache["progress"] = f"Resuming — {len(completed)} done, {len(remaining)} to go..."
+                cache["progress"] = (
+                    f"Resuming - {len(completed)} done, {len(remaining)} to go..."
+                )
 
         for fund in remaining:
             ticker   = fund["symbol"]
@@ -339,7 +332,8 @@ def run_update():
                     time.sleep(3)
                     continue
 
-                def fmt(v): return round(v, 2) if v is not None else None
+                def fmt(v):
+                    return round(v, 2) if v is not None else None
 
                 d1  = period_return(closes, 1)
                 w1  = period_return(closes, 7)
@@ -350,26 +344,36 @@ def run_update():
                 y1  = period_return(closes, 365)
                 rs  = None
                 if all(v is not None for v in [d1, w1, m1, m3]):
-                    rs = (d1*0.10)+(w1*0.20)+(m1*0.30)+(m3*0.40)
+                    rs = (d1*0.10) + (w1*0.20) + (m1*0.30) + (m3*0.40)
 
                 zsc   = zscore_1yr(closes)
-                ob_os = ("Overbought" if zsc and zsc > 2.10
-                         else "Oversold" if zsc and zsc < -2.05 else "")
+                ob_os = (
+                    "Overbought" if zsc and zsc > 2.10 else
+                    "Oversold"   if zsc and zsc < -2.05 else
+                    ""
+                )
                 lo, hi, last_px, bar_pct = price_bar_data(closes)
 
                 row = {
-                    "symbol": ticker, "name": name,
-                    "type": ftype, "category": category,
-                    "morningstar_url": ms_url, "exp_ratio": fund.get("exp_ratio", None),
-                    "sparkline":   make_sparkline(closes),
-                    "1D": fmt(d1), "1W": fmt(w1), "1M": fmt(m1),
-                    "3M": fmt(m3), "6M": fmt(m6), "YTD": fmt(ytd), "1Y": fmt(y1),
-                    "rs_score":   round(rs, 3) if rs is not None else None,
-                    "zscore": zsc, "ob_os": ob_os,
+                    "symbol":        ticker,
+                    "name":          name,
+                    "type":          ftype,
+                    "category":      category,
+                    "morningstar_url": ms_url,
+                    "exp_ratio":     fund.get("exp_ratio", None),
+                    "sparkline":     make_sparkline(closes),
+                    "1D":   fmt(d1), "1W": fmt(w1), "1M": fmt(m1),
+                    "3M":   fmt(m3), "6M": fmt(m6), "YTD": fmt(ytd), "1Y": fmt(y1),
+                    "rs_score":  round(rs, 3) if rs is not None else None,
+                    "zscore":    zsc,
+                    "ob_os":     ob_os,
                     "trade_flag": sma_flag(closes, 21),
                     "trend_flag": sma_flag(closes, 63),
-                    "low3": lo, "high3": hi, "last_price": last_px, "bar_pct": bar_pct,
-                    "rank": None,
+                    "low3":      lo,
+                    "high3":     hi,
+                    "last_price": last_px,
+                    "bar_pct":   bar_pct,
+                    "rank":      None,
                 }
 
                 with _lock:
@@ -387,23 +391,23 @@ def run_update():
 
             time.sleep(3)
 
-        # VIX
+        # ── Risk On/Off indicator (replaces VIX fetch) ────────────────────
         with _lock:
-            cache["progress"] = "Fetching VIX signal..."
-        sig, v9, vi = fetch_vix()
+            cache["progress"] = "Fetching Risk Indicator data..."
+        print("  Computing Risk On/Off indicator...")
+        try:
+            refresh_risk_data(redis_set_fn=redis_set)
+        except Exception as e:
+            print(f"  [risk] Error during refresh: {e}")
 
         with _lock:
-            cache["vix_signal"]   = sig
-            cache["vix9d_value"]  = v9
-            cache["vix_value"]    = vi
             cache["phase"]        = 4
             cache["progress"]     = "Complete"
             cache["last_updated"] = datetime.now(CT).strftime("%-m/%-d/%y %H:%M CT")
             save_to_redis()
 
-        # Clear progress key — full load done
         redis_del(REDIS_KEY_PRG)
-        print(f"Done — {len(cache['data'])} funds loaded.")
+        print(f"Done - {len(cache['data'])} funds loaded.")
 
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -422,12 +426,11 @@ def _ensure_started():
         _started = True
         restored = load_from_redis()
         if restored and cache["phase"] == 4:
-            print("  Full cache from Redis — no download needed.")
+            print("  Full cache from Redis - no download needed.")
             with _lock:
                 cache["progress"] = "Loaded from cache"
         elif restored and cache["phase"] < 4:
-            # Partial load saved — resume
-            print("  Partial cache found — resuming download.")
+            print("  Partial cache found - resuming download.")
             trigger_update()
         else:
             trigger_update()
@@ -442,17 +445,25 @@ def index():
         snap  = dict(cache)
         funds = list(snap["ranked"])
     is_loading = snap["phase"] < 4 or len(funds) == 0
-    return render_template("index.html",
-        funds=funds, last_updated=snap["last_updated"],
-        vix_signal=snap["vix_signal"], vix9d=snap["vix9d_value"],
-        vix=snap["vix_value"], is_loading=is_loading,
-        phase=snap["phase"], progress=snap["progress"],
-        error=snap["error"])
+
+    # Load risk indicator from Redis for the badge
+    risk = get_cached_risk(redis_get_fn=redis_get)
+
+    return render_template(
+        "index.html",
+        funds=funds,
+        last_updated=snap["last_updated"],
+        is_loading=is_loading,
+        phase=snap["phase"],
+        progress=snap["progress"],
+        error=snap["error"],
+        risk=risk,
+    )
 
 
 @app.route("/refresh")
 def refresh():
-    """Force a full fresh download — use once daily after market close."""
+    """Force a full fresh download - use once daily after market close."""
     redis_del(REDIS_KEY_MF)
     redis_del(REDIS_KEY_PRG)
     with _lock:
@@ -460,7 +471,7 @@ def refresh():
         cache["ranked"] = []
         cache["phase"]  = 0
     trigger_update()
-    return jsonify({"status": "full refresh started — check /status for progress"})
+    return jsonify({"status": "full refresh started - check /status for progress"})
 
 
 @app.route("/status")
@@ -481,15 +492,25 @@ def api_data():
     with _lock:
         return jsonify(cache["ranked"])
 
+
+@app.route("/risk-indicator")
+def risk_indicator_page():
+    """Full Risk On/Off indicator page."""
+    return render_template("risk_indicator.html")
+
+
+@app.route("/api/risk-indicator")
+def api_risk_indicator():
+    """JSON - serve cached risk indicator (computed during daily refresh)."""
+    data = get_cached_risk(redis_get_fn=redis_get)
+    if data is None:
+        return jsonify({
+            "error": "Risk indicator not yet computed. "
+                     "It runs automatically at the end of the daily /refresh."
+        }), 503
+    return jsonify(data)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
-
-from risk_indicator import get_risk_indicator   # ← also add this near top imports
-@app.route(’/risk-indicator’)
-def risk_indicator_page():
-“”“Serve the Risk On/Off indicator page.”””
-return render_template(‘risk_indicator.html’)
-@app.route(’/api/risk-indicator’)
-def api_risk_indicator():
-“””
