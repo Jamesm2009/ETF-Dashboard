@@ -504,11 +504,16 @@ def api_risk_indicator():
     """JSON - serve cached risk indicator (computed during daily refresh)."""
     data = get_cached_risk(redis_get_fn=redis_get)
     if data is None:
-        return jsonify({
+        resp = jsonify({
             "error": "Risk indicator not yet computed. "
                      "It runs automatically at the end of the daily /refresh."
-        }), 503
-    return jsonify(data)
+        })
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp, 503
+    resp = jsonify(data)
+    # Allow the MF dashboard (separate domain) to fetch this endpoint
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
 
 
 if __name__ == "__main__":
