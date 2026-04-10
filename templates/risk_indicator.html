@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -7,670 +6,452 @@
 <title>Risk On / Off Indicator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-
 <style>
   :root {
-    --bg:         #070d18;
-    --surface:    #0d1624;
-    --card:       #111d2e;
-    --border:     #1d2f45;
-    --border2:    #253650;
-    --text:       #dce8f5;
-    --muted:      #5a7494;
-    --dim:        #2e4460;
-    --risk-on:    #10b981;
-    --lean-on:    #34d399;
-    --neutral:    #f59e0b;
-    --lean-off:   #f87171;
-    --risk-off:   #ef4444;
-    --accent:     #3b82f6;
-    --mono:       'JetBrains Mono', monospace;
-    --sans:       'IBM Plex Sans', sans-serif;
+    --bg:       #070d18;
+    --surface:  #0d1624;
+    --card:     #111d2e;
+    --border:   #1d2f45;
+    --border2:  #253650;
+    --text:     #dce8f5;
+    --muted:    #5a7494;
+    --dim:      #2e4460;
+    --risk-on:  #10b981;
+    --lean-on:  #34d399;
+    --neutral:  #f59e0b;
+    --lean-off: #f87171;
+    --risk-off: #ef4444;
+    --accent:   #3b82f6;
+    --mono:     "JetBrains Mono", monospace;
+    --sans:     "IBM Plex Sans", sans-serif;
   }
-
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
   body {
     background: var(--bg);
     color: var(--text);
     font-family: var(--sans);
-    font-weight: 400;
     min-height: 100vh;
     padding: 2rem 1rem 3rem;
     background-image:
       radial-gradient(ellipse 80% 50% at 50% -10%, rgba(59,130,246,0.06), transparent),
       linear-gradient(180deg, #070d18 0%, #060b14 100%);
   }
-
-  /* ── Layout ──────────────────────────────────────────────── */
-  .wrap {
-    max-width: 860px;
-    margin: 0 auto;
-  }
-
+  .wrap { max-width: 860px; margin: 0 auto; }
   .page-header {
-    display: flex;
-    align-items: baseline;
+    display: flex; align-items: baseline;
     justify-content: space-between;
-    margin-bottom: 2.5rem;
-    gap: 1rem;
-    flex-wrap: wrap;
+    margin-bottom: 2.5rem; gap: 1rem; flex-wrap: wrap;
   }
-
   .page-title {
-    font-family: var(--mono);
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--muted);
+    font-family: var(--mono); font-size: 0.7rem;
+    font-weight: 600; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--muted);
   }
-
   .page-title span {
-    display: inline-block;
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
-    margin-right: 0.5rem;
-    vertical-align: middle;
+    display: inline-block; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--accent);
+    margin-right: 0.5rem; vertical-align: middle;
     box-shadow: 0 0 8px var(--accent);
     animation: pulse 2.5s ease-in-out infinite;
   }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.3; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .header-meta { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }
+  .back-link {
+    font-family: var(--mono); font-size: 0.68rem;
+    color: var(--muted); text-decoration: none;
+    letter-spacing: 0.06em;
   }
-
-  .header-meta {
-    font-family: var(--mono);
-    font-size: 0.7rem;
-    color: var(--muted);
-  }
-
-  /* ── Cards ───────────────────────────────────────────────── */
+  .back-link:hover { color: var(--text); }
   .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
   }
-
-  /* ── Main gauge card ──────────────────────────────────────── */
   .gauge-card {
-    padding: 2rem 1.5rem 1.5rem;
-    margin-bottom: 1rem;
+    padding: 2rem 1.5rem 1.5rem; margin-bottom: 1rem;
     position: relative;
   }
-
   .gauge-card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 10px;
+    content: ""; position: absolute; inset: 0; border-radius: 10px;
     background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(59,130,246,0.04), transparent);
     pointer-events: none;
   }
-
-  .gauge-wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0;
-  }
-
-  #gauge-svg-container {
-    width: 100%;
-    max-width: 460px;
-  }
-
+  .gauge-wrap { display: flex; flex-direction: column; align-items: center; }
+  #gauge-svg-container { width: 100%; max-width: 460px; }
   .signal-row {
-    display: flex;
-    align-items: center;
-    gap: 1.25rem;
-    margin-top: -0.5rem;
+    display: flex; align-items: center;
+    gap: 1.25rem; margin-top: -0.5rem;
   }
-
   .signal-pill {
-    font-family: var(--mono);
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    padding: 0.45rem 1.25rem;
-    border-radius: 4px;
-    border-width: 1px;
-    border-style: solid;
+    font-family: var(--mono); font-size: 0.75rem;
+    font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; padding: 0.45rem 1.25rem;
+    border-radius: 4px; border-width: 1px; border-style: solid;
     transition: all 0.4s ease;
   }
-
-  .score-block {
-    text-align: center;
-  }
-
+  .score-block { text-align: center; }
   .score-num {
-    font-family: var(--mono);
-    font-size: 2.8rem;
-    font-weight: 700;
-    line-height: 1;
-    letter-spacing: -0.02em;
-    font-variant-numeric: tabular-nums;
-    transition: color 0.4s ease;
+    font-family: var(--mono); font-size: 2.8rem;
+    font-weight: 700; line-height: 1; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums; transition: color 0.4s ease;
   }
-
   .score-sub {
-    font-family: var(--mono);
-    font-size: 0.62rem;
-    letter-spacing: 0.15em;
-    color: var(--muted);
-    text-transform: uppercase;
-    margin-top: 0.2rem;
+    font-family: var(--mono); font-size: 0.62rem;
+    letter-spacing: 0.15em; color: var(--muted);
+    text-transform: uppercase; margin-top: 0.2rem;
   }
-
   .components-count {
-    font-family: var(--mono);
-    font-size: 0.65rem;
-    color: var(--muted);
-    text-align: center;
-    margin-top: 1rem;
-    letter-spacing: 0.08em;
-    border-top: 1px solid var(--border);
+    font-family: var(--mono); font-size: 0.65rem;
+    color: var(--muted); text-align: center; margin-top: 1rem;
+    letter-spacing: 0.08em; border-top: 1px solid var(--border);
     padding-top: 0.75rem;
   }
-
-  /* ── Reversal alert ───────────────────────────────────────── */
   .alert-card {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.85rem 1.25rem;
-    border-radius: 8px;
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.85rem 1.25rem; border-radius: 8px;
     background: rgba(245,158,11,0.07);
     border: 1px solid rgba(245,158,11,0.3);
-    margin-bottom: 1rem;
-    font-size: 0.85rem;
-    color: #fcd34d;
-    font-family: var(--mono);
+    margin-bottom: 1rem; font-size: 0.85rem;
+    color: #fcd34d; font-family: var(--mono);
   }
-
-  .alert-icon {
-    font-size: 1.1rem;
-    flex-shrink: 0;
-  }
-
-  /* ── Component breakdown ──────────────────────────────────── */
+  .alert-icon { font-size: 1.1rem; flex-shrink: 0; }
   .breakdown-card { margin-bottom: 1rem; }
-
   .breakdown-header {
     display: grid;
     grid-template-columns: 1fr 70px 130px 50px;
-    gap: 0.75rem;
-    padding: 0.65rem 1.25rem;
+    gap: 0.75rem; padding: 0.65rem 1.25rem;
     border-bottom: 1px solid var(--border);
-    font-family: var(--mono);
-    font-size: 0.6rem;
-    font-weight: 600;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--muted);
+    font-family: var(--mono); font-size: 0.6rem;
+    font-weight: 600; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted);
   }
-
   .comp-row {
     display: grid;
     grid-template-columns: 1fr 70px 130px 50px;
-    gap: 0.75rem;
-    align-items: center;
+    gap: 0.75rem; align-items: center;
     padding: 0.75rem 1.25rem;
     border-bottom: 1px solid var(--border);
     transition: background 0.15s;
   }
-
   .comp-row:last-child { border-bottom: none; }
   .comp-row:hover { background: rgba(255,255,255,0.02); }
-
-  .comp-name {
-    font-size: 0.82rem;
-    color: var(--text);
-    line-height: 1.3;
-  }
-
+  .comp-name { font-size: 0.82rem; color: var(--text); line-height: 1.3; }
   .comp-name small {
-    display: block;
-    font-size: 0.7rem;
-    color: var(--muted);
-    margin-top: 0.15rem;
-    line-height: 1.3;
+    display: block; font-size: 0.7rem; color: var(--muted);
+    margin-top: 0.15rem; line-height: 1.3;
   }
-
   .comp-z {
-    font-family: var(--mono);
-    font-size: 0.85rem;
-    font-weight: 600;
-    text-align: right;
+    font-family: var(--mono); font-size: 0.85rem;
+    font-weight: 600; text-align: right;
     font-variant-numeric: tabular-nums;
   }
-
-  /* Centered z-score bar */
   .z-bar-wrap {
-    position: relative;
-    height: 5px;
-    background: rgba(255,255,255,0.04);
-    border-radius: 2px;
+    position: relative; height: 5px;
+    background: rgba(255,255,255,0.04); border-radius: 2px;
   }
-
   .z-bar-mid {
-    position: absolute;
-    left: 50%;
-    top: -2px;
-    width: 1px;
-    height: 9px;
-    background: var(--dim);
+    position: absolute; left: 50%; top: -2px;
+    width: 1px; height: 9px; background: var(--dim);
   }
-
   .z-bar-fill {
-    position: absolute;
-    top: 0;
-    height: 100%;
-    border-radius: 2px;
-    transition: width 0.6s ease, left 0.6s ease;
+    position: absolute; top: 0; height: 100%;
+    border-radius: 2px; transition: width 0.6s ease, left 0.6s ease;
   }
-
   .comp-weight {
-    font-family: var(--mono);
-    font-size: 0.68rem;
-    color: var(--muted);
-    text-align: right;
-    letter-spacing: 0.04em;
+    font-family: var(--mono); font-size: 0.68rem;
+    color: var(--muted); text-align: right; letter-spacing: 0.04em;
   }
-
-  .comp-na {
-    font-family: var(--mono);
-    font-size: 0.72rem;
-    color: var(--dim);
-    text-align: right;
-  }
-
-  /* ── Legend ───────────────────────────────────────────────── */
   .legend-card {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    overflow: hidden;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    margin-bottom: 1rem;
+    display: grid; grid-template-columns: repeat(5,1fr);
+    overflow: hidden; border-radius: 8px;
+    border: 1px solid var(--border); margin-bottom: 1rem;
   }
-
   .legend-item {
-    text-align: center;
-    padding: 0.6rem 0.4rem;
+    text-align: center; padding: 0.6rem 0.4rem;
     border-right: 1px solid var(--border);
-    font-family: var(--mono);
-    font-size: 0.6rem;
-    letter-spacing: 0.06em;
+    font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.06em;
   }
-
   .legend-item:last-child { border-right: none; }
-
   .legend-dot {
-    display: inline-block;
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    margin-bottom: 0.3rem;
+    display: inline-block; width: 7px; height: 7px;
+    border-radius: 50%; margin-bottom: 0.3rem;
   }
-
-  /* ── Footer ───────────────────────────────────────────────── */
   .footer-row {
-    display: flex;
-    align-items: center;
+    display: flex; align-items: center;
     justify-content: space-between;
-    gap: 1rem;
-    flex-wrap: wrap;
-    padding: 0 0.25rem;
+    gap: 1rem; flex-wrap: wrap; padding: 0 0.25rem;
   }
-
   .footer-note {
-    font-family: var(--mono);
-    font-size: 0.65rem;
-    color: var(--muted);
-    line-height: 1.6;
+    font-family: var(--mono); font-size: 0.65rem;
+    color: var(--muted); line-height: 1.6;
   }
-
   .refresh-btn {
-    background: var(--card);
-    border: 1px solid var(--border2);
-    color: var(--text);
-    font-family: var(--mono);
-    font-size: 0.7rem;
-    padding: 0.45rem 1rem;
-    border-radius: 5px;
-    cursor: pointer;
-    letter-spacing: 0.08em;
-    transition: background 0.15s, border-color 0.15s;
+    background: var(--card); border: 1px solid var(--border2);
+    color: var(--text); font-family: var(--mono);
+    font-size: 0.7rem; padding: 0.45rem 1rem;
+    border-radius: 5px; cursor: pointer;
+    letter-spacing: 0.08em; transition: background 0.15s;
   }
-
-  .refresh-btn:hover {
-    background: var(--border);
-    border-color: var(--border2);
-  }
-
-  /* ── Loading / error ──────────────────────────────────────── */
+  .refresh-btn:hover { background: var(--border); }
   .state-center {
-    text-align: center;
-    padding: 3.5rem 2rem;
-    font-family: var(--mono);
-    font-size: 0.8rem;
-    color: var(--muted);
+    text-align: center; padding: 3.5rem 2rem;
+    font-family: var(--mono); font-size: 0.8rem; color: var(--muted);
   }
-
   .state-error {
     padding: 1.25rem;
     background: rgba(239,68,68,0.07);
     border: 1px solid rgba(239,68,68,0.25);
-    border-radius: 8px;
-    font-family: var(--mono);
-    font-size: 0.8rem;
-    color: #fca5a5;
-    text-align: center;
+    border-radius: 8px; font-family: var(--mono);
+    font-size: 0.8rem; color: #fca5a5; text-align: center;
   }
-
   .spinner {
-    display: inline-block;
-    width: 16px; height: 16px;
+    display: inline-block; width: 16px; height: 16px;
     border: 2px solid var(--border2);
     border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    margin-right: 0.6rem;
-    vertical-align: middle;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+    margin-right: 0.6rem; vertical-align: middle;
   }
-
   @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* ── Responsive ───────────────────────────────────────────── */
+  .stale-note {
+    font-family: var(--mono); font-size: 0.65rem;
+    color: var(--muted); text-align: center;
+    margin-top: 0.5rem;
+  }
   @media (max-width: 560px) {
     .breakdown-header,
     .comp-row { grid-template-columns: 1fr 60px 100px; }
     .comp-weight { display: none; }
-    .legend-card { grid-template-columns: repeat(3, 1fr); }
+    .legend-card { grid-template-columns: repeat(3,1fr); }
     .legend-item:nth-child(n+4) { border-top: 1px solid var(--border); }
     .signal-row { flex-direction: column; gap: 0.75rem; }
   }
 </style>
-
 </head>
 <body>
 <div class="wrap">
 
   <div class="page-header">
-    <div class="page-title">
-      <span></span>Risk On / Off Indicator
+    <div>
+      <div class="page-title"><span></span>Risk On / Off Indicator</div>
+      <a class="back-link" href="/">&#8592; Back to Dashboard</a>
     </div>
-    <div class="header-meta" id="header-ts">—</div>
+    <div class="header-meta" id="header-ts">-</div>
   </div>
-
-  <!-- Reversal alert (conditionally shown) -->
 
   <div id="alert-zone"></div>
 
-  <!-- Main gauge -->
-
   <div class="card gauge-card" id="gauge-card">
-    <div class="state-center"><span class="spinner"></span>Fetching market data…</div>
+    <div class="state-center"><span class="spinner"></span>Loading indicator...</div>
   </div>
-
-  <!-- Component breakdown -->
 
   <div class="card breakdown-card" id="breakdown-card" style="display:none">
     <div class="breakdown-header">
       <div>Component</div>
       <div style="text-align:right">Z-Score</div>
-      <div>Reading (±3σ)</div>
+      <div>Reading (plus/minus 3)</div>
       <div style="text-align:right">Weight</div>
     </div>
     <div id="comp-rows"></div>
   </div>
 
-  <!-- Legend -->
-
   <div class="legend-card">
-    <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div><div style="color:#f87171">Risk Off</div><div style="color:var(--muted)">z &lt; −1</div></div>
-    <div class="legend-item"><div class="legend-dot" style="background:#f87171"></div><div style="color:#fca5a5">Lean Off</div><div style="color:var(--muted)">−1 to −¼</div></div>
-    <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div><div style="color:#fcd34d">Neutral</div><div style="color:var(--muted)">−¼ to +¼</div></div>
-    <div class="legend-item"><div class="legend-dot" style="background:#34d399"></div><div style="color:#6ee7b7">Lean On</div><div style="color:var(--muted)">+¼ to +1</div></div>
-    <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div><div style="color:#34d399">Risk On</div><div style="color:var(--muted)">z &gt; +1</div></div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#ef4444"></div>
+      <div style="color:#f87171">Risk Off</div>
+      <div style="color:var(--muted)">z &lt; -1</div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#f87171"></div>
+      <div style="color:#fca5a5">Lean Off</div>
+      <div style="color:var(--muted)">-1 to -1/4</div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#f59e0b"></div>
+      <div style="color:#fcd34d">Neutral</div>
+      <div style="color:var(--muted)">-1/4 to +1/4</div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#34d399"></div>
+      <div style="color:#6ee7b7">Lean On</div>
+      <div style="color:var(--muted)">+1/4 to +1</div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#10b981"></div>
+      <div style="color:#34d399">Risk On</div>
+      <div style="color:var(--muted)">z &gt; +1</div>
+    </div>
   </div>
-
-  <!-- Footer -->
 
   <div class="footer-row">
     <div class="footer-note">
-      6-component composite · 252-day z-scores · 2–8 week horizon<br>
-      Weights: Credit 25% · Equity 35% · Macro 20% · FX 15% · VIX 5%
+      6-component composite &middot; 252-day z-scores &middot; 2-8 week horizon<br>
+      Weights: Credit 25% &middot; Equity 35% &middot; Macro 20% &middot; FX 15% &middot; VIX 5%<br>
+      Updated once daily during nightly data refresh
     </div>
-    <button class="refresh-btn" onclick="loadData()">↻ Refresh</button>
+    <button class="refresh-btn" onclick="loadData()">&#8635; Reload</button>
   </div>
 
 </div>
 
 <script>
-// ─── Gauge drawing ───────────────────────────────────────────────────────────
-
 function scoreToTheta(score) {
-  // Maps [-3, +3] → [0, π]   (0 = left, π/2 = top, π = right)
   return (Math.max(-3, Math.min(3, score)) + 3) / 6 * Math.PI;
 }
-
 function gaugeXY(theta, r, cx, cy) {
-  // Converts gauge angle to SVG x,y
-  // cx + r*cos(π - θ),  cy - r*sin(θ)
-  return [
-    cx + r * Math.cos(Math.PI - theta),
-    cy - r * Math.sin(theta)
-  ];
+  return [cx + r * Math.cos(Math.PI - theta), cy - r * Math.sin(theta)];
 }
-
 function arcPath(t1, t2, r, cx, cy) {
-  const [x1, y1] = gaugeXY(t1, r, cx, cy);
-  const [x2, y2] = gaugeXY(t2, r, cx, cy);
-  const la = (t2 - t1) > Math.PI ? 1 : 0;
-  return `M${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 ${la},0 ${x2.toFixed(2)},${y2.toFixed(2)}`;
+  var p1 = gaugeXY(t1, r, cx, cy);
+  var p2 = gaugeXY(t2, r, cx, cy);
+  var la = (t2 - t1) > Math.PI ? 1 : 0;
+  return "M" + p1[0].toFixed(2) + "," + p1[1].toFixed(2) +
+         " A" + r + "," + r + " 0 " + la + ",0 " +
+         p2[0].toFixed(2) + "," + p2[1].toFixed(2);
 }
-
 function buildGaugeSVG(composite, signalColor) {
-  const W = 460, H = 220;
-  const cx = W / 2, cy = H - 18;
-  const R = 150, TW = 32;
-
-  const zones = [
-    { s1: -3.00, s2: -1.00, c: '#ef4444' },
-    { s1: -1.00, s2: -0.25, c: '#f87171' },
-    { s1: -0.25, s2:  0.25, c: '#f59e0b' },
-    { s1:  0.25, s2:  1.00, c: '#34d399' },
-    { s1:  1.00, s2:  3.00, c: '#10b981' },
+  var W = 460, H = 220, cx = W/2, cy = H-18, R = 150, TW = 32;
+  var zones = [
+    {s1:-3.00, s2:-1.00, c:"#ef4444"},
+    {s1:-1.00, s2:-0.25, c:"#f87171"},
+    {s1:-0.25, s2: 0.25, c:"#f59e0b"},
+    {s1: 0.25, s2: 1.00, c:"#34d399"},
+    {s1: 1.00, s2: 3.00, c:"#10b981"},
   ];
-
-  const t = s => scoreToTheta(s);
-  const a = (t1, t2, r, sw, color, op) =>
-    `<path d="${arcPath(t1, t2, r, cx, cy)}" stroke="${color}" stroke-width="${sw}" fill="none" stroke-linecap="butt" opacity="${op || 1}"/>`;
-
-  let paths = '';
-
-  // Background track
-  paths += a(0, Math.PI, R, TW + 8, '#0d1624', 1);
-
-  // Colored zones
-  zones.forEach(z => { paths += a(t(z.s1), t(z.s2), R, TW, z.c, 0.88); });
-
-  // Subtle outer ring
-  paths += a(0, Math.PI, R + TW/2 + 3, 1, '#1d2f45', 1);
-  paths += a(0, Math.PI, R - TW/2 - 3, 1, '#1d2f45', 1);
-
-  // Tick marks + labels
-  const ticks = [
-    { s: -3,    lbl: '−3' },
-    { s: -1,    lbl: '−1' },
-    { s:  0,    lbl:  '0' },
-    { s:  1,    lbl: '+1' },
-    { s:  3,    lbl: '+3' },
-  ];
-
-  ticks.forEach(({ s, lbl }) => {
-    const theta = t(s);
-    const [ox, oy] = gaugeXY(theta, R + TW/2 + 4, cx, cy);
-    const [ix, iy] = gaugeXY(theta, R - TW/2 - 4, cx, cy);
-    const [lx, ly] = gaugeXY(theta, R + TW/2 + 20, cx, cy);
-    paths += `<line x1="${ox.toFixed(1)}" y1="${oy.toFixed(1)}" x2="${ix.toFixed(1)}" y2="${iy.toFixed(1)}" stroke="#2e4460" stroke-width="1.5"/>`;
-    paths += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" fill="#3d5a7a" font-size="10.5" font-family="JetBrains Mono,monospace">${lbl}</text>`;
-  });
-
-  // Needle
-  const theta = t(composite);
-  const [nx, ny] = gaugeXY(theta, R - 14, cx, cy);
-
-  // Shadow glow under needle
-  paths += `<line x1="${cx}" y1="${cy}" x2="${nx.toFixed(2)}" y2="${ny.toFixed(2)}" stroke="${signalColor}" stroke-width="6" stroke-linecap="round" opacity="0.18"/>`;
-  // Needle
-  paths += `<line x1="${cx}" y1="${cy}" x2="${nx.toFixed(2)}" y2="${ny.toFixed(2)}" stroke="#f0f8ff" stroke-width="2.5" stroke-linecap="round"/>`;
-  // Hub
-  paths += `<circle cx="${cx}" cy="${cy}" r="9" fill="#0d1624" stroke="${signalColor}" stroke-width="2.5"/>`;
-  paths += `<circle cx="${cx}" cy="${cy}" r="3.5" fill="${signalColor}"/>`;
-
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;overflow:visible"
-    xmlns="http://www.w3.org/2000/svg">${paths}</svg>`;
+  var t = function(s){ return scoreToTheta(s); };
+  var a = function(t1,t2,r,sw,color,op){
+    return '<path d="' + arcPath(t1,t2,r,cx,cy) +
+           '" stroke="' + color + '" stroke-width="' + sw +
+           '" fill="none" stroke-linecap="butt" opacity="' + (op||1) + '"/>';
+  };
+  var paths = "";
+  paths += a(0, Math.PI, R, TW+8, "#0d1624", 1);
+  for (var i=0; i<zones.length; i++) {
+    paths += a(t(zones[i].s1), t(zones[i].s2), R, TW, zones[i].c, 0.88);
+  }
+  paths += a(0, Math.PI, R+TW/2+3, 1, "#1d2f45", 1);
+  paths += a(0, Math.PI, R-TW/2-3, 1, "#1d2f45", 1);
+  var ticks = [{s:-3,lbl:"-3"},{s:-1,lbl:"-1"},{s:0,lbl:"0"},{s:1,lbl:"+1"},{s:3,lbl:"+3"}];
+  for (var j=0; j<ticks.length; j++) {
+    var tk = ticks[j];
+    var theta = t(tk.s);
+    var ox = gaugeXY(theta, R+TW/2+4, cx, cy);
+    var ix = gaugeXY(theta, R-TW/2-4, cx, cy);
+    var lx = gaugeXY(theta, R+TW/2+20, cx, cy);
+    paths += '<line x1="'+ox[0].toFixed(1)+'" y1="'+ox[1].toFixed(1)+
+             '" x2="'+ix[0].toFixed(1)+'" y2="'+ix[1].toFixed(1)+
+             '" stroke="#2e4460" stroke-width="1.5"/>';
+    paths += '<text x="'+lx[0].toFixed(1)+'" y="'+lx[1].toFixed(1)+
+             '" text-anchor="middle" dominant-baseline="middle"'+
+             ' fill="#3d5a7a" font-size="10.5" font-family="JetBrains Mono,monospace">'+
+             tk.lbl+'</text>';
+  }
+  var theta = t(composite);
+  var np = gaugeXY(theta, R-14, cx, cy);
+  paths += '<line x1="'+cx+'" y1="'+cy+'" x2="'+np[0].toFixed(2)+'" y2="'+np[1].toFixed(2)+
+           '" stroke="'+signalColor+'" stroke-width="6" stroke-linecap="round" opacity="0.18"/>';
+  paths += '<line x1="'+cx+'" y1="'+cy+'" x2="'+np[0].toFixed(2)+'" y2="'+np[1].toFixed(2)+
+           '" stroke="#f0f8ff" stroke-width="2.5" stroke-linecap="round"/>';
+  paths += '<circle cx="'+cx+'" cy="'+cy+'" r="9" fill="#0d1624" stroke="'+signalColor+'" stroke-width="2.5"/>';
+  paths += '<circle cx="'+cx+'" cy="'+cy+'" r="3.5" fill="'+signalColor+'"/>';
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;display:block;overflow:visible" xmlns="http://www.w3.org/2000/svg">'+paths+'</svg>';
 }
-
-// ─── Component bar ───────────────────────────────────────────────────────────
 
 function zBarHTML(z) {
-  if (z === null || z === undefined) return '<div style="color:var(--dim);font-size:0.7rem;font-family:var(--mono)">N/A</div>';
-  const cl = Math.max(-3, Math.min(3, z));
-  const pct = Math.abs(cl) / 3 * 50;   // % of half-track width
-  const isPos = cl >= 0;
-  // Interpolate color: red → yellow → green
-  const hue = isPos ? 145 : 5;
-  const sat = 75;
-  const lit = 55;
-  const color = `hsl(${hue}, ${sat}%, ${lit}%)`;
-
-  const left  = isPos ? '50%' : `${(50 - pct).toFixed(1)}%`;
-  const width = `${pct.toFixed(1)}%`;
-
-  return `<div class="z-bar-wrap">
-    <div class="z-bar-mid"></div>
-    <div class="z-bar-fill" style="left:${left};width:${width};background:${color}"></div>
-  </div>`;
+  if (z === null || z === undefined) {
+    return '<div style="color:var(--dim);font-size:0.7rem;font-family:var(--mono)">N/A</div>';
+  }
+  var cl = Math.max(-3, Math.min(3, z));
+  var pct = Math.abs(cl) / 3 * 50;
+  var isPos = cl >= 0;
+  var hue = isPos ? 145 : 5;
+  var color = "hsl(" + hue + ", 75%, 55%)";
+  var left  = isPos ? "50%" : ((50 - pct).toFixed(1) + "%");
+  var width = pct.toFixed(1) + "%";
+  return '<div class="z-bar-wrap"><div class="z-bar-mid"></div>' +
+         '<div class="z-bar-fill" style="left:' + left +
+         ';width:' + width + ';background:' + color + '"></div></div>';
 }
-
-// ─── Signal helpers ──────────────────────────────────────────────────────────
-
-function signalColor(c) {
-  if (c >  1.00) return '#10b981';
-  if (c >  0.25) return '#34d399';
-  if (c > -0.25) return '#f59e0b';
-  if (c > -1.00) return '#f87171';
-  return '#ef4444';
-}
-
-function signalLabel(c) {
-  if (c >  1.00) return 'Risk On';
-  if (c >  0.25) return 'Lean Risk On';
-  if (c > -0.25) return 'Neutral';
-  if (c > -1.00) return 'Lean Risk Off';
-  return 'Risk Off';
-}
-
-// ─── Render ──────────────────────────────────────────────────────────────────
 
 function render(data) {
-  // Alert zone
-  const alertZone = document.getElementById('alert-zone');
+  var alertZone = document.getElementById("alert-zone");
   if (data.reversal_alert) {
-    alertZone.innerHTML = `<div class="alert-card"><span class="alert-icon">⚡</span><span>${data.reversal_alert}</span></div>`;
+    alertZone.innerHTML = '<div class="alert-card"><span class="alert-icon">&#9889;</span><span>' + data.reversal_alert + '</span></div>';
   } else {
-    alertZone.innerHTML = '';
+    alertZone.innerHTML = "";
   }
 
-  const composite = data.composite;
-  const color     = data.signal_color || signalColor(composite);
-  const label     = data.signal       || signalLabel(composite);
-  const sign      = composite >= 0 ? '+' : '';
+  var composite = data.composite;
+  var color = data.signal_color || "#f59e0b";
+  var label = data.signal || "Neutral";
+  var sign  = composite >= 0 ? "+" : "";
 
-  // Gauge card
-  document.getElementById('gauge-card').innerHTML = `
-    <div class="gauge-wrap">
-      <div id="gauge-svg-container">${buildGaugeSVG(composite, color)}</div>
+  document.getElementById("gauge-card").innerHTML =
+    '<div class="gauge-wrap">' +
+    '<div id="gauge-svg-container">' + buildGaugeSVG(composite, color) + '</div>' +
+    '<div class="signal-row">' +
+    '<div class="signal-pill" style="color:' + color + ';border-color:' + color + '33;background:' + color + '0d">' + label + '</div>' +
+    '<div class="score-block">' +
+    '<div class="score-num" style="color:' + color + '">' + sign + composite.toFixed(2) + '</div>' +
+    '<div class="score-sub">composite z-score</div>' +
+    '</div>' +
+    '</div>' +
+    '<div class="components-count">' + data.components_used + ' / ' + data.components_total +
+    ' components active &nbsp;&middot;&nbsp; 252-day z-scores</div>' +
+    '</div>';
 
-      <div class="signal-row">
-        <div class="signal-pill" style="color:${color};border-color:${color}33;background:${color}0d">
-          ${label}
-        </div>
-        <div class="score-block">
-          <div class="score-num" style="color:${color}">${sign}${composite.toFixed(2)}</div>
-          <div class="score-sub">composite z-score</div>
-        </div>
-      </div>
+  if (data.timestamp) {
+    document.getElementById("header-ts").textContent = data.timestamp;
+  }
 
-      <div class="components-count">
-        ${data.components_used} / ${data.components_total} components active
-        &nbsp;·&nbsp; 252-day z-scores
-      </div>
-    </div>
-  `;
-
-  // Component rows
-  const rows = (data.components || []).map(c => {
-    const z    = c.zscore;
-    const ok   = z !== null && z !== undefined && c.status === 'ok';
-    const zStr = ok ? (z >= 0 ? '+' : '') + z.toFixed(2) : '—';
-    const zClr = !ok ? 'var(--dim)' : z > 0 ? '#34d399' : '#f87171';
-    const wPct = c.weight !== undefined ? Math.round(c.weight * 100) + '%' : '';
-    const desc = c.description || '';
-
-    return `<div class="comp-row">
-      <div class="comp-name">${c.label || c.key}<small>${desc}</small></div>
-      <div class="comp-z" style="color:${zClr}">${zStr}</div>
-      <div>${ok ? zBarHTML(z) : '<div style="color:var(--dim);font-size:0.7rem;font-family:var(--mono)">unavailable</div>'}</div>
-      <div class="comp-weight">${wPct}</div>
-    </div>`;
-  }).join('');
-
-  document.getElementById('comp-rows').innerHTML = rows;
-  document.getElementById('breakdown-card').style.display = 'block';
-
-  // Timestamp
-  document.getElementById('header-ts').textContent = data.timestamp || '';
+  var comps = data.components || [];
+  var rows = "";
+  for (var i=0; i<comps.length; i++) {
+    var c = comps[i];
+    var z = c.zscore;
+    var ok = (z !== null && z !== undefined && c.status === "ok");
+    var zStr = ok ? ((z >= 0 ? "+" : "") + z.toFixed(2)) : "-";
+    var zClr = !ok ? "var(--dim)" : (z > 0 ? "#34d399" : "#f87171");
+    var wPct = c.weight !== undefined ? Math.round(c.weight * 100) + "%" : "";
+    rows += '<div class="comp-row">' +
+      '<div class="comp-name">' + (c.label || c.key) + '<small>' + (c.description || "") + '</small></div>' +
+      '<div class="comp-z" style="color:' + zClr + '">' + zStr + '</div>' +
+      '<div>' + (ok ? zBarHTML(z) : '<div style="color:var(--dim);font-size:0.7rem;font-family:var(--mono)">unavailable</div>') + '</div>' +
+      '<div class="comp-weight">' + wPct + '</div>' +
+      '</div>';
+  }
+  document.getElementById("comp-rows").innerHTML = rows;
+  document.getElementById("breakdown-card").style.display = "block";
 }
-
-// ─── Fetch data ───────────────────────────────────────────────────────────────
 
 async function loadData() {
-  document.getElementById('gauge-card').innerHTML =
-    '<div class="state-center"><span class="spinner"></span>Fetching market data…</div>';
-  document.getElementById('breakdown-card').style.display = 'none';
-  document.getElementById('alert-zone').innerHTML = '';
-
+  document.getElementById("gauge-card").innerHTML =
+    '<div class="state-center"><span class="spinner"></span>Loading indicator...</div>';
+  document.getElementById("breakdown-card").style.display = "none";
+  document.getElementById("alert-zone").innerHTML = "";
   try {
-    const resp = await fetch('/api/risk-indicator');
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-
-    if (data.error) {
-      document.getElementById('gauge-card').innerHTML =
-        `<div class="state-error">⚠ ${data.error}</div>`;
+    var resp = await fetch("/api/risk-indicator");
+    if (resp.status === 503) {
+      document.getElementById("gauge-card").innerHTML =
+        '<div class="state-center" style="color:var(--muted)">' +
+        'Risk indicator not yet computed.<br>It runs automatically during the nightly refresh.<br>' +
+        'You can trigger it now by visiting <a href="/refresh" style="color:var(--accent)">/refresh</a>.' +
+        '</div>';
       return;
     }
-
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    var data = await resp.json();
+    if (data.error) {
+      document.getElementById("gauge-card").innerHTML =
+        '<div class="state-error">&#9888; ' + data.error + '</div>';
+      return;
+    }
     render(data);
-  } catch (e) {
-    document.getElementById('gauge-card').innerHTML =
-      `<div class="state-error">⚠ Could not load indicator data: ${e.message}</div>`;
+  } catch(e) {
+    document.getElementById("gauge-card").innerHTML =
+      '<div class="state-error">&#9888; Could not load: ' + e.message + '</div>';
   }
 }
 
-// Load on page open, then auto-refresh every 30 minutes
 loadData();
-setInterval(loadData, 30 * 60 * 1000);
 </script>
-
 </body>
 </html>
