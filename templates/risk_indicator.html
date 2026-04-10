@@ -293,22 +293,55 @@
 </div>
 
 <script>
-function scoreToTheta(score) {
-  return (Math.max(-3, Math.min(3, score)) + 3) / 6 * Math.PI;
+/*
+  Gauge coordinate system
+  -----------------------
+  Hub at (cx, cy) near the bottom of the SVG.
+  The semicircle opens upward. Scores map to angles as follows:
+
+    score = -3  ->  angle = pi   (180 deg, leftmost point)
+    score =  0  ->  angle = pi/2  (90 deg, top center)
+    score = +3  ->  angle = 0    (0 deg, rightmost point)
+
+  Direct formula: angle = pi * (3 - score) / 6
+
+  SVG position from angle:
+    x = cx + r * cos(angle)
+    y = cy - r * sin(angle)     <- minus because SVG Y increases downward
+
+  Verified:
+    score = -3  -> angle=pi   -> x=cx-r (left),  y=cy        correct
+    score =  0  -> angle=pi/2 -> x=cx,   y=cy-r  (top)       correct
+    score = +3  -> angle=0    -> x=cx+r (right), y=cy         correct
+    score = +0.70 -> angle~69 deg -> x=cx+0.36r (right-ish)  correct
+
+  Arc zones drawn from larger angle (left) to smaller angle (right)
+  using sweep-flag=0 (counterclockwise in SVG Y-down = going over the top).
+*/
+function sToAngle(score) {
+  var s = Math.max(-3, Math.min(3, score));
+  return Math.PI * (3 - s) / 6;
 }
-function gaugeXY(theta, r, cx, cy) {
-  return [cx + r * Math.cos(Math.PI - theta), cy - r * Math.sin(theta)];
+function xyAt(angle, r, cx, cy) {
+  return [
+    cx + r * Math.cos(angle),
+    cy - r * Math.sin(angle)
+  ];
 }
-function arcPath(t1, t2, r, cx, cy) {
-  var p1 = gaugeXY(t1, r, cx, cy);
-  var p2 = gaugeXY(t2, r, cx, cy);
-  var la = (t2 - t1) > Math.PI ? 1 : 0;
+function arcSeg(s1, s2, r, cx, cy) {
+  // s1 < s2, so angle1 > angle2 (left to right)
+  var a1 = sToAngle(s1), a2 = sToAngle(s2);
+  var p1 = xyAt(a1, r, cx, cy);
+  var p2 = xyAt(a2, r, cx, cy);
+  var la = (a1 - a2) > Math.PI ? 1 : 0;
   return "M" + p1[0].toFixed(2) + "," + p1[1].toFixed(2) +
          " A" + r + "," + r + " 0 " + la + ",0 " +
          p2[0].toFixed(2) + "," + p2[1].toFixed(2);
 }
+
 function buildGaugeSVG(composite, signalColor) {
-  var W = 460, H = 220, cx = W/2, cy = H-18, R = 150, TW = 32;
+  var W = 460, H = 220, cx = W / 2, cy = H - 18, R = 150, TW = 32;
+
   var zones = [
     {s1:-3.00, s2:-1.00, c:"#ef4444"},
     {s1:-1.00, s2:-0.25, c:"#f87171"},
@@ -316,43 +349,67 @@ function buildGaugeSVG(composite, signalColor) {
     {s1: 0.25, s2: 1.00, c:"#34d399"},
     {s1: 1.00, s2: 3.00, c:"#10b981"},
   ];
-  var t = function(s){ return scoreToTheta(s); };
-  var a = function(t1,t2,r,sw,color,op){
-    return '<path d="' + arcPath(t1,t2,r,cx,cy) +
+
+  var arc = function(s1, s2, r, sw, color, op) {
+    return '<path d="' + arcSeg(s1, s2, r, cx, cy) +
            '" stroke="' + color + '" stroke-width="' + sw +
-           '" fill="none" stroke-linecap="butt" opacity="' + (op||1) + '"/>';
+           '" fill="none" stroke-linecap="butt" opacity="' + (op || 1) + '"/>';
   };
+
   var paths = "";
-  paths += a(0, Math.PI, R, TW+8, "#0d1624", 1);
-  for (var i=0; i<zones.length; i++) {
-    paths += a(t(zones[i].s1), t(zones[i].s2), R, TW, zones[i].c, 0.88);
+  // Background track
+  paths += arc(-3, 3, R, TW + 8, "#0d1624", 1);
+  // Colored zones
+  for (var i = 0; i < zones.length; i++) {
+    paths += arc(zones[i].s1, zones[i].s2, R, TW, zones[i].c, 0.88);
   }
-  paths += a(0, Math.PI, R+TW/2+3, 1, "#1d2f45", 1);
-  paths += a(0, Math.PI, R-TW/2-3, 1, "#1d2f45", 1);
-  var ticks = [{s:-3,lbl:"-3"},{s:-1,lbl:"-1"},{s:0,lbl:"0"},{s:1,lbl:"+1"},{s:3,lbl:"+3"}];
-  for (var j=0; j<ticks.length; j++) {
+  // Subtle border rings
+  paths += arc(-3, 3, R + TW / 2 + 3, 1, "#1d2f45", 1);
+  paths += arc(-3, 3, R - TW / 2 - 3, 1, "#1d2f45", 1);
+
+  // Tick marks and labels
+  var ticks = [
+    {s:-3, lbl:"-3"},
+    {s:-1, lbl:"-1"},
+    {s: 0, lbl: "0"},
+    {s: 1, lbl:"+1"},
+    {s: 3, lbl:"+3"},
+  ];
+  for (var j = 0; j < ticks.length; j++) {
     var tk = ticks[j];
-    var theta = t(tk.s);
-    var ox = gaugeXY(theta, R+TW/2+4, cx, cy);
-    var ix = gaugeXY(theta, R-TW/2-4, cx, cy);
-    var lx = gaugeXY(theta, R+TW/2+20, cx, cy);
-    paths += '<line x1="'+ox[0].toFixed(1)+'" y1="'+ox[1].toFixed(1)+
-             '" x2="'+ix[0].toFixed(1)+'" y2="'+ix[1].toFixed(1)+
+    var ang = sToAngle(tk.s);
+    var op  = xyAt(ang, R + TW / 2 + 4,  cx, cy);
+    var ip  = xyAt(ang, R - TW / 2 - 4,  cx, cy);
+    var lp  = xyAt(ang, R + TW / 2 + 20, cx, cy);
+    paths += '<line x1="' + op[0].toFixed(1) + '" y1="' + op[1].toFixed(1) +
+             '" x2="' + ip[0].toFixed(1) + '" y2="' + ip[1].toFixed(1) +
              '" stroke="#2e4460" stroke-width="1.5"/>';
-    paths += '<text x="'+lx[0].toFixed(1)+'" y="'+lx[1].toFixed(1)+
-             '" text-anchor="middle" dominant-baseline="middle"'+
-             ' fill="#3d5a7a" font-size="10.5" font-family="JetBrains Mono,monospace">'+
-             tk.lbl+'</text>';
+    paths += '<text x="' + lp[0].toFixed(1) + '" y="' + lp[1].toFixed(1) +
+             '" text-anchor="middle" dominant-baseline="middle"' +
+             ' fill="#3d5a7a" font-size="10.5"' +
+             ' font-family="JetBrains Mono,monospace">' + tk.lbl + '</text>';
   }
-  var theta = t(composite);
-  var np = gaugeXY(theta, R-14, cx, cy);
-  paths += '<line x1="'+cx+'" y1="'+cy+'" x2="'+np[0].toFixed(2)+'" y2="'+np[1].toFixed(2)+
-           '" stroke="'+signalColor+'" stroke-width="6" stroke-linecap="round" opacity="0.18"/>';
-  paths += '<line x1="'+cx+'" y1="'+cy+'" x2="'+np[0].toFixed(2)+'" y2="'+np[1].toFixed(2)+
+
+  // Needle  — uses the same direct angle formula, no cos(pi-theta) ambiguity
+  var needleAngle = sToAngle(composite);
+  var np = xyAt(needleAngle, R - 14, cx, cy);
+  // Glow
+  paths += '<line x1="' + cx + '" y1="' + cy +
+           '" x2="' + np[0].toFixed(2) + '" y2="' + np[1].toFixed(2) +
+           '" stroke="' + signalColor + '" stroke-width="6"' +
+           ' stroke-linecap="round" opacity="0.18"/>';
+  // Needle shaft
+  paths += '<line x1="' + cx + '" y1="' + cy +
+           '" x2="' + np[0].toFixed(2) + '" y2="' + np[1].toFixed(2) +
            '" stroke="#f0f8ff" stroke-width="2.5" stroke-linecap="round"/>';
-  paths += '<circle cx="'+cx+'" cy="'+cy+'" r="9" fill="#0d1624" stroke="'+signalColor+'" stroke-width="2.5"/>';
-  paths += '<circle cx="'+cx+'" cy="'+cy+'" r="3.5" fill="'+signalColor+'"/>';
-  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;display:block;overflow:visible" xmlns="http://www.w3.org/2000/svg">'+paths+'</svg>';
+  // Hub
+  paths += '<circle cx="' + cx + '" cy="' + cy +
+           '" r="9" fill="#0d1624" stroke="' + signalColor + '" stroke-width="2.5"/>';
+  paths += '<circle cx="' + cx + '" cy="' + cy + '" r="3.5" fill="' + signalColor + '"/>';
+
+  return '<svg viewBox="0 0 ' + W + ' ' + H +
+         '" style="width:100%;display:block;overflow:visible"' +
+         ' xmlns="http://www.w3.org/2000/svg">' + paths + '</svg>';
 }
 
 function zBarHTML(z) {
