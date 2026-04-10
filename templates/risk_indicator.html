@@ -315,8 +315,15 @@
     score = +3  -> angle=0    -> x=cx+r (right), y=cy         correct
     score = +0.70 -> angle~69 deg -> x=cx+0.36r (right-ish)  correct
 
-  Arc zones drawn from larger angle (left) to smaller angle (right)
-  using sweep-flag=0 (counterclockwise in SVG Y-down = going over the top).
+  Arc zones drawn from larger angle (left) to smaller angle (right).
+
+  SVG sweep-flag=1 (clockwise on screen) is required here.
+  Because our p1 has a LARGER angle than p2, the clockwise arc is the one
+  that travels over the top of the semicircle (the short path we want).
+  sweep=0 would go the long way around through the bottom, painting zones
+  on the wrong side. This is counter-intuitive but confirmed by the geometry:
+    p1 = leftmost (-3, angle=180deg), p2 = upper-left (-1, angle=120deg)
+    clockwise from left goes UP through 150deg to upper-left -> correct.
 */
 function sToAngle(score) {
   var s = Math.max(-3, Math.min(3, score));
@@ -329,13 +336,14 @@ function xyAt(angle, r, cx, cy) {
   ];
 }
 function arcSeg(s1, s2, r, cx, cy) {
-  // s1 < s2, so angle1 > angle2 (left to right)
+  // s1 < s2, so angle1 > angle2 (left to right across the gauge)
   var a1 = sToAngle(s1), a2 = sToAngle(s2);
   var p1 = xyAt(a1, r, cx, cy);
   var p2 = xyAt(a2, r, cx, cy);
   var la = (a1 - a2) > Math.PI ? 1 : 0;
+  // sweep=1 (clockwise in SVG) paints arcs going over the top, not through the bottom
   return "M" + p1[0].toFixed(2) + "," + p1[1].toFixed(2) +
-         " A" + r + "," + r + " 0 " + la + ",0 " +
+         " A" + r + "," + r + " 0 " + la + ",1 " +
          p2[0].toFixed(2) + "," + p2[1].toFixed(2);
 }
 
