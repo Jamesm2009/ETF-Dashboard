@@ -220,7 +220,7 @@ def sma_flag(closes, window):
     return "green" if last > sma else ("red" if last < sma else "grey")
 
 
-def make_sparkline(closes, days=170, w=90, h=28):
+def make_sparkline(closes, days=170, w=150, h=28):
     c    = closes.dropna()
     tail = c.tail(days).values
     if len(tail) < 2:
