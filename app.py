@@ -438,6 +438,30 @@ def _ensure_started():
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+def compute_breadth(funds):
+    """
+    Count how many ETFs are above / below their 21-day (1M) and 63-day (3M) SMAs.
+    Uses trade_flag (21d) and trend_flag (63d) already stored on each fund row.
+    Grey = insufficient data, excluded from the totals.
+    Returns a dict with sma21 and sma63 sub-dicts.
+    """
+    def tally(flag_key):
+        above = sum(1 for f in funds if f.get(flag_key) == "green")
+        below = sum(1 for f in funds if f.get(flag_key) == "red")
+        total = above + below          # excludes grey (no data)
+        return {
+            "above":     above,
+            "below":     below,
+            "total":     total,
+            "above_pct": round(above / total * 100, 1) if total else 0,
+            "below_pct": round(below / total * 100, 1) if total else 0,
+        }
+    return {
+        "sma21": tally("trade_flag"),   # 21-day = ~1 month
+        "sma63": tally("trend_flag"),   # 63-day = ~3 months
+    }
+
+
 @app.route("/")
 def index():
     _ensure_started()
@@ -449,6 +473,9 @@ def index():
     # Load risk indicator from Redis for the badge
     risk = get_cached_risk(redis_get_fn=redis_get)
 
+    # Breadth meters - computed live from cached flags (no extra API calls)
+    breadth = compute_breadth(funds)
+
     return render_template(
         "index.html",
         funds=funds,
@@ -458,6 +485,7 @@ def index():
         progress=snap["progress"],
         error=snap["error"],
         risk=risk,
+        breadth=breadth,
     )
 
 
