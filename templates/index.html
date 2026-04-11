@@ -280,6 +280,89 @@ footer { text-align: center; padding: 16px; color: var(--muted); font-size: 11px
 </a>
 {% endif %}
   
+{% if breadth and breadth.sma21.total > 0 %}
+<div style="display:inline-flex; align-items:center; gap:1.25rem; padding:0 0.5rem;">
+
+  <!-- 1 Month (1-month) meter -->
+  <div style="display:flex; flex-direction:column; gap:3px; min-width:160px;">
+    <div style="display:flex; justify-content:space-between; align-items:baseline;">
+      <span style="font-size:0.7rem; font-weight:600; color:#16a34a; letter-spacing:0.02em;">
+        {{ breadth.sma21.above_pct }}% ({{ breadth.sma21.above }})
+      </span>
+      <span style="font-size:0.65rem; color:#6b7280; letter-spacing:0.06em; text-transform:uppercase; padding:0 0.3rem;">
+       1 Month
+      </span>
+      <span style="font-size:0.7rem; font-weight:600; color:#dc2626; letter-spacing:0.02em;">
+        ({{ breadth.sma21.below }}) {{ breadth.sma21.below_pct }}%
+      </span>
+    </div>
+    <!-- Bar track -->
+    <div style="
+      position:relative; height:6px; border-radius:3px;
+      background:#1f2937; overflow:hidden;
+      border:1px solid rgba(255,255,255,0.06);
+    ">
+      <div style="
+        position:absolute; left:0; top:0; bottom:0;
+        width:{{ breadth.sma21.above_pct }}%;
+        background:linear-gradient(90deg, #15803d, #22c55e);
+        border-radius:3px 0 0 3px;
+        transition:width 0.6s ease;
+      "></div>
+      <div style="
+        position:absolute; right:0; top:0; bottom:0;
+        width:{{ breadth.sma21.below_pct }}%;
+        background:linear-gradient(90deg, #ef4444, #b91c1c);
+        border-radius:0 3px 3px 0;
+        transition:width 0.6s ease;
+      "></div>
+    </div>
+  </div>
+
+  <!-- Divider -->
+  <div style="width:1px; height:32px; background:rgba(255,255,255,0.08); flex-shrink:0;"></div>
+
+  <!-- 3 Month (3-month) meter -->
+  <div style="display:flex; flex-direction:column; gap:3px; min-width:160px;">
+    <div style="display:flex; justify-content:space-between; align-items:baseline;">
+      <span style="font-size:0.7rem; font-weight:600; color:#16a34a; letter-spacing:0.02em;">
+        {{ breadth.sma63.above_pct }}% ({{ breadth.sma63.above }})
+      </span>
+      <span style="font-size:0.65rem; color:#6b7280; letter-spacing:0.06em; text-transform:uppercase; padding:0 0.3rem;">
+        3 Month
+      </span>
+      <span style="font-size:0.7rem; font-weight:600; color:#dc2626; letter-spacing:0.02em;">
+        ({{ breadth.sma63.below }}) {{ breadth.sma63.below_pct }}%
+      </span>
+    </div>
+    <!-- Bar track -->
+    <div style="
+      position:relative; height:6px; border-radius:3px;
+      background:#1f2937; overflow:hidden;
+      border:1px solid rgba(255,255,255,0.06);
+    ">
+      <div style="
+        position:absolute; left:0; top:0; bottom:0;
+        width:{{ breadth.sma63.above_pct }}%;
+        background:linear-gradient(90deg, #15803d, #22c55e);
+        border-radius:3px 0 0 3px;
+        transition:width 0.6s ease;
+      "></div>
+      <div style="
+        position:absolute; right:0; top:0; bottom:0;
+        width:{{ breadth.sma63.below_pct }}%;
+        background:linear-gradient(90deg, #ef4444, #b91c1c);
+        border-radius:0 3px 3px 0;
+        transition:width 0.6s ease;
+      "></div>
+    </div>
+  </div>
+
+</div>
+{% endif %}
+
+<!--
+
 <a class="btn-link" href="https://gex-vizualizer.vercel.app/" target="_blank" style="background:#7c3aed;">GEX</a>
  </div>
 </header>
