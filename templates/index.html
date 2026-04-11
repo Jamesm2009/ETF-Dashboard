@@ -279,150 +279,42 @@ footer { text-align: center; padding: 16px; color: var(--muted); font-size: 11px
   </div>
 </a>
 {% endif %}
-  
 
 {% if breadth and breadth.sma21.total > 0 %}
-<div style="
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-">
+<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
 
-  <!-- ── SMA 21 (1-month) ── -->
-  <div style="
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    width: 180px;
-  ">
-    <!-- Label row: Above ... SMA21 ... Below -->
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:2px;">
-      <span style="
-        font-size: 0.68rem; font-weight: 700;
-        color: #22c55e; font-family: monospace;
-        white-space: nowrap;
-      ">{{ breadth.sma21.above_pct }}% ({{ breadth.sma21.above }})</span>
-
-      <span style="
-        font-size: 0.6rem; color: #6b7280;
-        letter-spacing: 0.08em; text-transform: uppercase;
-        flex-shrink: 0; padding: 0 3px;
-      ">1M</span>
-
-      <span style="
-        font-size: 0.68rem; font-weight: 700;
-        color: #f87171; font-family: monospace;
-        white-space: nowrap;
-      ">({{ breadth.sma21.below }}) {{ breadth.sma21.below_pct }}%</span>
+  <!-- SMA 21 (1-month) -->
+  <div style="display:flex;flex-direction:column;gap:3px;width:185px;flex-shrink:0;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;">
+      <span style="font-size:0.68rem;font-weight:700;color:#22c55e;font-family:monospace;white-space:nowrap;">{{ breadth.sma21.above_pct }}% ({{ breadth.sma21.above }})</span>
+      <span style="font-size:0.58rem;color:#6b7280;letter-spacing:0.1em;text-transform:uppercase;flex-shrink:0;padding:0 4px;">1 MONTH</span>
+      <span style="font-size:0.68rem;font-weight:700;color:#f87171;font-family:monospace;white-space:nowrap;">({{ breadth.sma21.below }}) {{ breadth.sma21.below_pct }}%</span>
     </div>
-
-    <!-- Bar -->
-    <div style="
-      position: relative;
-      height: 10px;
-      border-radius: 5px;
-      background: #111827;
-      overflow: hidden;
-      border: 1px solid rgba(255,255,255,0.07);
-    ">
-      <!-- Green (above) fills from left -->
-      <div style="
-        position: absolute; left: 0; top: 0; bottom: 0;
-        width: {{ breadth.sma21.above_pct }}%;
-        background: linear-gradient(90deg, #16a34a 0%, #22c55e 100%);
-        border-radius: 4px 0 0 4px;
-      "></div>
-      <!-- Red (below) fills from right -->
-      <div style="
-        position: absolute; right: 0; top: 0; bottom: 0;
-        width: {{ breadth.sma21.below_pct }}%;
-        background: linear-gradient(90deg, #ef4444 0%, #b91c1c 100%);
-        border-radius: 0 4px 4px 0;
-      "></div>
-      <!-- 1px gap between the two at the midpoint -->
-      <div style="
-        position: absolute;
-        left: calc({{ breadth.sma21.above_pct }}% - 1px);
-        top: 0; bottom: 0;
-        width: 2px;
-        background: rgba(10,15,25,0.9);
-      "></div>
+    <!-- Bar: two side-by-side divs, no absolute positioning -->
+    <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:#0d1624;gap:1px;">
+      <div style="height:100%;width:{{ breadth.sma21.above_pct }}%;background:#16a34a;border-radius:3px 0 0 3px;min-width:{% if breadth.sma21.above > 0 %}2px{% else %}0{% endif %};flex-shrink:0;"></div>
+      <div style="height:100%;flex:1;background:#dc2626;border-radius:0 3px 3px 0;min-width:{% if breadth.sma21.below > 0 %}2px{% else %}0{% endif %};"></div>
     </div>
   </div>
 
-  <!-- Divider -->
-  <div style="
-    width: 1px; height: 30px;
-    background: rgba(255,255,255,0.08);
-    flex-shrink: 0;
-  "></div>
+  <div style="width:1px;height:28px;background:rgba(255,255,255,0.1);flex-shrink:0;"></div>
 
-  <!-- ── SMA 63 (3-month) ── -->
-  <div style="
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    width: 180px;
-  ">
-    <!-- Label row: Above ... SMA63 ... Below -->
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:2px;">
-      <span style="
-        font-size: 0.68rem; font-weight: 700;
-        color: #22c55e; font-family: monospace;
-        white-space: nowrap;
-      ">{{ breadth.sma63.above_pct }}% ({{ breadth.sma63.above }})</span>
-
-      <span style="
-        font-size: 0.6rem; color: #6b7280;
-        letter-spacing: 0.08em; text-transform: uppercase;
-        flex-shrink: 0; padding: 0 3px;
-      ">3M</span>
-
-      <span style="
-        font-size: 0.68rem; font-weight: 700;
-        color: #f87171; font-family: monospace;
-        white-space: nowrap;
-      ">({{ breadth.sma63.below }}) {{ breadth.sma63.below_pct }}%</span>
+  <!-- SMA 63 (3-month) -->
+  <div style="display:flex;flex-direction:column;gap:3px;width:185px;flex-shrink:0;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;">
+      <span style="font-size:0.68rem;font-weight:700;color:#22c55e;font-family:monospace;white-space:nowrap;">{{ breadth.sma63.above_pct }}% ({{ breadth.sma63.above }})</span>
+      <span style="font-size:0.58rem;color:#6b7280;letter-spacing:0.1em;text-transform:uppercase;flex-shrink:0;padding:0 4px;">3 MONTH</span>
+      <span style="font-size:0.68rem;font-weight:700;color:#f87171;font-family:monospace;white-space:nowrap;">({{ breadth.sma63.below }}) {{ breadth.sma63.below_pct }}%</span>
     </div>
-
     <!-- Bar -->
-    <div style="
-      position: relative;
-      height: 10px;
-      border-radius: 5px;
-      background: #111827;
-      overflow: hidden;
-      border: 1px solid rgba(255,255,255,0.07);
-    ">
-      <!-- Green (above) fills from left -->
-      <div style="
-        position: absolute; left: 0; top: 0; bottom: 0;
-        width: {{ breadth.sma63.above_pct }}%;
-        background: linear-gradient(90deg, #16a34a 0%, #22c55e 100%);
-        border-radius: 4px 0 0 4px;
-      "></div>
-      <!-- Red (below) fills from right -->
-      <div style="
-        position: absolute; right: 0; top: 0; bottom: 0;
-        width: {{ breadth.sma63.below_pct }}%;
-        background: linear-gradient(90deg, #ef4444 0%, #b91c1c 100%);
-        border-radius: 0 4px 4px 0;
-      "></div>
-      <!-- Gap line -->
-      <div style="
-        position: absolute;
-        left: calc({{ breadth.sma63.above_pct }}% - 1px);
-        top: 0; bottom: 0;
-        width: 2px;
-        background: rgba(10,15,25,0.9);
-      "></div>
+    <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:#0d1624;gap:1px;">
+      <div style="height:100%;width:{{ breadth.sma63.above_pct }}%;background:#16a34a;border-radius:3px 0 0 3px;min-width:{% if breadth.sma63.above > 0 %}2px{% else %}0{% endif %};flex-shrink:0;"></div>
+      <div style="height:100%;flex:1;background:#dc2626;border-radius:0 3px 3px 0;min-width:{% if breadth.sma63.below > 0 %}2px{% else %}0{% endif %};"></div>
     </div>
   </div>
 
 </div>
 {% endif %}
-
-<!--
 
 <a class="btn-link" href="https://gex-vizualizer.vercel.app/" target="_blank" style="background:#7c3aed;">GEX</a>
  </div>
