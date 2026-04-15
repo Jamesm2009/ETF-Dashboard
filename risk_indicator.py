@@ -10,22 +10,26 @@ Composite Risk On/Off Indicator (six components, 252-day z-scores):
   6. FXF (franc ETF)   ( 7.5%) Safe-haven FX, inverted so +z = risk-on
   7. VIXY/VIXM ratio   ( 5%)  VIX term structure, reversal alert when extreme
 
-Signal thresholds:
-  composite >  1.00  ->  Risk On
-  composite >  0.25  ->  Lean Risk On
-  composite > -0.25  ->  Neutral
-  composite > -1.00  ->  Lean Risk Off
-  composite <= -1.00 ->  Risk Off
+Accuracy tracker:
+  Each daily run records today's signal + today's SPY close.
+  The next run resolves yesterday's entry: was the predicted direction correct?
+  Builds a rolling 252-entry log in Redis. Stats accumulate day by day.
+
+  Prediction mapping:
+    Risk On / Lean Risk On  -> BULLISH  -> correct if SPY next day > +0.1%
+    Neutral                 -> NEUTRAL  -> correct if SPY next day in [-0.1%, +0.1%]
+    Lean Risk Off / Risk Off-> BEARISH  -> correct if SPY next day < -0.1%
 
 USAGE in app.py:
 
   Daily batch (at end of run_update):
     from risk_indicator import refresh_risk_data
-    refresh_risk_data(redis_set_fn=redis_set)
+    refresh_risk_data(redis_set_fn=redis_set, redis_get_fn=redis_get)
 
   Read from cache (in routes):
     from risk_indicator import get_cached_risk
     data = get_cached_risk(redis_get_fn=redis_get)
+    # data now includes data["accuracy"] with full stats
 """
 
 import os
@@ -36,6 +40,7 @@ from datetime import datetime, date, timedelta
 TIINGO_TOKEN = os.environ.get("TIINGO_TOKEN", "")
 TIINGO_BASE  = "https://api.tiingo.com/tiingo/daily"
 REDIS_KEY    = "risk_indicator_v2"
+HISTORY_KEY  = "risk_indicator_history_v1"
 
 # ---------------------------------------------------------------------------
 # Component definitions
@@ -102,7 +107,7 @@ FX_COMPONENTS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Tiingo fetch  (mirrors pattern already used in app.py)
+# Tiingo fetch
 # ---------------------------------------------------------------------------
 
 def _fetch_tiingo(ticker, days=340):
@@ -173,12 +178,26 @@ def _classify(composite):
     elif composite > -1.00: return "Lean Risk Off", "#f87171"
     else:                   return "Risk Off",       "#dc2626"
 
+
+def _signal_to_bucket(signal):
+    """Collapse the five signals into three directional predictions."""
+    if signal in ("Risk On", "Lean Risk On"):
+        return "BULLISH"
+    elif signal in ("Risk Off", "Lean Risk Off"):
+        return "BEARISH"
+    else:
+        return "NEUTRAL"
+
 # ---------------------------------------------------------------------------
-# Core compute  (no Redis, pure calculation)
+# Core compute
 # ---------------------------------------------------------------------------
 
 def _compute():
-    """Fetch all tickers, compute composite. Returns result dict or None."""
+    """
+    Fetch all tickers, compute composite.
+    Returns (result_dict, spy_prices) or (None, None).
+    spy_prices is passed to the accuracy tracker to avoid a second API call.
+    """
     print("  [risk] Starting fetch...")
 
     all_tickers = set()
@@ -237,14 +256,13 @@ def _compute():
             scored.append(entry)
             continue
 
-        # Invert: rising yen/franc = safe-haven demand = risk-off
         entry.update(zscore=round(-z, 3), status="ok")
         scored.append(entry)
 
     valid = [c for c in scored if c.get("zscore") is not None]
     if not valid:
         print("  [risk] No valid components - skipping")
-        return None
+        return None, None
 
     total_w   = sum(c["weight"] for c in valid)
     composite = round(
@@ -253,8 +271,6 @@ def _compute():
     )
     signal, color = _classify(composite)
 
-    # VIX reversal alert: post-inversion the vix_term score is very negative
-    # when near-term panic massively exceeds medium-term - often signals a bottom
     vix_comp = next((c for c in scored if c["key"] == "vix_term"), None)
     reversal_alert = None
     if (vix_comp and
@@ -262,7 +278,7 @@ def _compute():
             vix_comp["zscore"] < -2.0):
         reversal_alert = "Extreme near-term VIX spike - potential reversal may be near"
 
-    return {
+    result = {
         "composite":        composite,
         "signal":           signal,
         "signal_color":     color,
@@ -273,24 +289,195 @@ def _compute():
         "timestamp":        datetime.now().strftime("%Y-%m-%d %H:%M UTC"),
     }
 
+    # Return SPY prices alongside result so accuracy tracker can reuse them
+    spy_prices = prices.get("SPY")
+    return result, spy_prices
+
 # ---------------------------------------------------------------------------
-# Public API  (called from app.py)
+# Accuracy tracker
 # ---------------------------------------------------------------------------
 
-def refresh_risk_data(redis_set_fn):
+def _get_spy_change(spy_prices):
     """
-    Fetch fresh market data, compute composite, store result in Redis.
-    Called once daily at the end of run_update() in app.py.
+    Given the SPY price dict {date_str: price}, return:
+      (today_date_str, today_close, prev_date_str, change_pct)
+    or None if insufficient data.
+    """
+    if not spy_prices or len(spy_prices) < 2:
+        return None
+    dates = sorted(spy_prices.keys())
+    today_dt  = dates[-1]
+    prev_dt   = dates[-2]
+    today_px  = spy_prices[today_dt]
+    prev_px   = spy_prices[prev_dt]
+    change    = round((today_px - prev_px) / prev_px * 100, 3)
+    return today_dt, round(today_px, 2), prev_dt, change
+
+
+def _compute_accuracy_stats(completed):
+    """Compute accuracy statistics from a list of completed history entries."""
+    if not completed:
+        return {
+            "overall_pct":        None,
+            "overall_correct":    0,
+            "overall_total":      0,
+            "directional_pct":    None,
+            "directional_correct":0,
+            "directional_total":  0,
+            "by_bucket":          {},
+        }
+
+    correct = sum(1 for e in completed if e.get("correct"))
+    total   = len(completed)
+
+    by_bucket = {}
+    for bucket in ("BULLISH", "NEUTRAL", "BEARISH"):
+        entries = [e for e in completed if e.get("predicted") == bucket]
+        n = len(entries)
+        c = sum(1 for e in entries if e.get("correct"))
+        by_bucket[bucket] = {
+            "correct": c,
+            "total":   n,
+            "pct":     round(c / n * 100, 1) if n > 0 else None,
+        }
+
+    # Directional accuracy: exclude neutral predictions (hardest to get right)
+    directional = [e for e in completed if e.get("predicted") != "NEUTRAL"]
+    dir_n = len(directional)
+    dir_c = sum(1 for e in directional if e.get("correct"))
+
+    return {
+        "overall_pct":         round(correct / total * 100, 1),
+        "overall_correct":     correct,
+        "overall_total":       total,
+        "directional_pct":     round(dir_c / dir_n * 100, 1) if dir_n > 0 else None,
+        "directional_correct": dir_c,
+        "directional_total":   dir_n,
+        "by_bucket":           by_bucket,
+    }
+
+
+def _update_history(redis_get_fn, redis_set_fn, signal, composite, spy_prices):
+    """
+    Update rolling 252-day accuracy history in Redis.
+
+    Steps:
+      1. Load existing history from Redis.
+      2. Resolve the most recent pending entry using today's SPY change.
+      3. Append a new entry for today's signal.
+      4. Trim to 253 entries (252 completed + 1 pending).
+      5. Compute accuracy stats and save.
+
+    Returns accuracy stats dict.
+    """
+    spy_info = _get_spy_change(spy_prices)
+    if spy_info is None:
+        print("  [risk] Not enough SPY data for accuracy tracking")
+        return None
+
+    today_dt, today_close, prev_dt, change_pct = spy_info
+
+    # Determine today's actual SPY outcome
+    if change_pct > 0.1:
+        actual = "BULLISH"
+    elif change_pct < -0.1:
+        actual = "BEARISH"
+    else:
+        actual = "NEUTRAL"
+
+    # Load history (list of dicts, chronological)
+    history = redis_get_fn(HISTORY_KEY) or []
+
+    # --- Resolve yesterday's pending entry ---
+    # The last entry has spx_change_pct=None because we didn't know
+    # the outcome yet when we wrote it. Fill it in now.
+    if history:
+        last = history[-1]
+        if (last.get("spx_change_pct") is None
+                and last.get("date") != today_dt):
+            last["spx_change_pct"]  = change_pct
+            last["actual_outcome"]  = actual
+            last["correct"]         = (last.get("predicted") == actual)
+            print(
+                f"  [risk] Resolved {last['date']}: "
+                f"predicted={last['predicted']} actual={actual} "
+                f"({'CORRECT' if last['correct'] else 'WRONG'})"
+            )
+
+    # --- Append today's new pending entry ---
+    # Check we haven't already written today (idempotent)
+    if not history or history[-1].get("date") != today_dt:
+        history.append({
+            "date":           today_dt,
+            "signal":         signal,
+            "composite":      composite,
+            "predicted":      _signal_to_bucket(signal),
+            "spx_close":      today_close,
+            "spx_change_pct": None,   # resolved tomorrow
+            "actual_outcome": None,
+            "correct":        None,
+        })
+        print(f"  [risk] History: added {today_dt} signal={signal}")
+    else:
+        print(f"  [risk] History: {today_dt} already recorded, skipping")
+
+    # Keep at most 253 entries (252 completed + 1 today's pending)
+    history = history[-253:]
+
+    # Compute stats from all completed (resolved) entries
+    completed = [e for e in history if e.get("correct") is not None]
+    stats = _compute_accuracy_stats(completed)
+    stats["days_tracked"]    = len(history)
+    stats["days_completed"]  = len(completed)
+    stats["days_target"]     = 252
+
+    # Include last 20 entries for the history table (newest first)
+    stats["recent"] = list(reversed(history[-20:]))
+
+    # Save updated history
+    redis_set_fn(HISTORY_KEY, history, ex_seconds=200000)
+    print(
+        f"  [risk] Accuracy: {stats['overall_pct']}% "
+        f"({stats['overall_correct']}/{stats['overall_total']} days)"
+    )
+    return stats
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def refresh_risk_data(redis_set_fn, redis_get_fn=None):
+    """
+    Fetch fresh market data, compute composite, update accuracy history,
+    store everything in Redis. Called once daily at end of run_update().
 
     Args:
-        redis_set_fn: the redis_set(key, value, ex_seconds) function from app.py
+        redis_set_fn:  redis_set(key, value, ex_seconds) from app.py
+        redis_get_fn:  redis_get(key) from app.py  (needed for history)
     Returns:
-        result dict, or None if fetch failed
+        result dict (includes accuracy key), or None if compute failed
     """
-    result = _compute()
+    result, spy_prices = _compute()
     if result is None:
         print("  [risk] Compute failed - nothing saved to Redis")
         return None
+
+    # Update accuracy history if redis_get_fn provided
+    accuracy = None
+    if redis_get_fn is not None and spy_prices is not None:
+        try:
+            accuracy = _update_history(
+                redis_get_fn=redis_get_fn,
+                redis_set_fn=redis_set_fn,
+                signal=result["signal"],
+                composite=result["composite"],
+                spy_prices=spy_prices,
+            )
+        except Exception as e:
+            print(f"  [risk] Accuracy update error: {e}")
+
+    result["accuracy"] = accuracy
+
     redis_set_fn(REDIS_KEY, result, ex_seconds=90000)
     print(f"  [risk] Redis saved: {result['signal']} ({result['composite']:+.2f})")
     return result
@@ -299,11 +486,6 @@ def refresh_risk_data(redis_set_fn):
 def get_cached_risk(redis_get_fn):
     """
     Return the most recently computed risk indicator from Redis.
-    Called from routes in app.py.
-
-    Args:
-        redis_get_fn: the redis_get(key) function from app.py
-    Returns:
-        dict or None
+    Includes result['accuracy'] with full stats and recent history.
     """
     return redis_get_fn(REDIS_KEY)
