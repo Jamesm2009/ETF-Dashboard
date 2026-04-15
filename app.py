@@ -220,7 +220,7 @@ def sma_flag(closes, window):
     return "green" if last > sma else ("red" if last < sma else "grey")
 
 
-def make_sparkline(closes, days=170, w=120, h=28):
+def make_sparkline(closes, days=170, w=90, h=28):
     c    = closes.dropna()
     tail = c.tail(days).values
     if len(tail) < 2:
@@ -262,41 +262,6 @@ def price_bar_data(closes):
     last   = round(c.iloc[-1], 2)
     pct    = round((last - lo) / (hi - lo) * 100, 1) if hi > lo else 50.0
     return lo, hi, last, pct
-
-
-def volume_flow(df):
-    """
-    Compare 5-day avg volume vs 21-day avg volume to determine flow direction.
-    Compare current ratio vs ratio from 5 days ago to determine if flow is
-    strengthening or weakening.
-
-    Returns (arrow, change):
-      arrow:  'up'   = inflow  (5d avg > 21d avg)
-              'down' = outflow (5d avg < 21d avg)
-      change: 'pos'  = flow strengthening vs last week
-              'neg'  = flow weakening vs last week
-      Both return None if insufficient data.
-    """
-    if "volume" not in df.columns:
-        return None, None
-    vol = df["volume"].dropna()
-    if len(vol) < 26:
-        return None, None
-
-    # Current: 5-day avg vs 21-day avg
-    avg5_now  = vol.iloc[-5:].mean()
-    avg21_now = vol.iloc[-21:].mean()
-    ratio_now = avg5_now / avg21_now if avg21_now > 0 else 1.0
-
-    # One week ago: 5-day avg (days 6-10) vs 21-day avg (days 6-26)
-    avg5_ago  = vol.iloc[-10:-5].mean()
-    avg21_ago = vol.iloc[-26:-5].mean()
-    ratio_ago = avg5_ago / avg21_ago if avg21_ago > 0 else 1.0
-
-    arrow  = "up"  if ratio_now >= 1.0 else "down"
-    change = "pos" if ratio_now >= ratio_ago else "neg"
-
-    return arrow, change
 
 
 def rebuild_ranked():
@@ -388,7 +353,6 @@ def run_update():
                     ""
                 )
                 lo, hi, last_px, bar_pct = price_bar_data(closes)
-                vol_arrow, vol_change    = volume_flow(df)
 
                 row = {
                     "symbol":        ticker,
@@ -398,8 +362,6 @@ def run_update():
                     "morningstar_url": ms_url,
                     "exp_ratio":     fund.get("exp_ratio", None),
                     "sparkline":     make_sparkline(closes),
-                    "vol_arrow":     vol_arrow,
-                    "vol_change":    vol_change,
                     "1D":   fmt(d1), "1W": fmt(w1), "1M": fmt(m1),
                     "3M":   fmt(m3), "6M": fmt(m6), "YTD": fmt(ytd), "1Y": fmt(y1),
                     "rs_score":  round(rs, 3) if rs is not None else None,
@@ -429,12 +391,12 @@ def run_update():
 
             time.sleep(3)
 
-        # ── Risk On/Off indicator ────────────────────────────────────────────
+        # ── Risk On/Off indicator (replaces VIX fetch) ────────────────────
         with _lock:
             cache["progress"] = "Fetching Risk Indicator data..."
         print("  Computing Risk On/Off indicator...")
         try:
-            refresh_risk_data(redis_set_fn=redis_set)
+            refresh_risk_data(redis_set_fn=redis_set, redis_get_fn=redis_get)
         except Exception as e:
             print(f"  [risk] Error during refresh: {e}")
 
@@ -478,12 +440,15 @@ def _ensure_started():
 
 def compute_breadth(funds):
     """
-    Count how many ETFs are above / below their 21-day and 63-day SMAs.
+    Count how many ETFs are above / below their 21-day (1M) and 63-day (3M) SMAs.
+    Uses trade_flag (21d) and trend_flag (63d) already stored on each fund row.
+    Grey = insufficient data, excluded from the totals.
+    Returns a dict with sma21 and sma63 sub-dicts.
     """
     def tally(flag_key):
         above = sum(1 for f in funds if f.get(flag_key) == "green")
         below = sum(1 for f in funds if f.get(flag_key) == "red")
-        total = above + below
+        total = above + below          # excludes grey (no data)
         return {
             "above":     above,
             "below":     below,
@@ -492,8 +457,8 @@ def compute_breadth(funds):
             "below_pct": round(below / total * 100, 1) if total else 0,
         }
     return {
-        "sma21": tally("trade_flag"),
-        "sma63": tally("trend_flag"),
+        "sma21": tally("trade_flag"),   # 21-day = ~1 month
+        "sma63": tally("trend_flag"),   # 63-day = ~3 months
     }
 
 
@@ -505,7 +470,10 @@ def index():
         funds = list(snap["ranked"])
     is_loading = snap["phase"] < 4 or len(funds) == 0
 
-    risk    = get_cached_risk(redis_get_fn=redis_get)
+    # Load risk indicator from Redis for the badge
+    risk = get_cached_risk(redis_get_fn=redis_get)
+
+    # Breadth meters - computed live from cached flags (no extra API calls)
     breadth = compute_breadth(funds)
 
     return render_template(
@@ -571,6 +539,7 @@ def api_risk_indicator():
         resp.headers["Access-Control-Allow-Origin"] = "*"
         return resp, 503
     resp = jsonify(data)
+    # Allow the MF dashboard (separate domain) to fetch this endpoint
     resp.headers["Access-Control-Allow-Origin"] = "*"
     return resp
 
