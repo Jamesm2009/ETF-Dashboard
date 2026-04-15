@@ -1,743 +1,487 @@
+{% macro pct_cell(v) %}
+  {% if v is none %}<td class="num na">—</td>
+  {% elif v == 0 %}<td class="num zero">0.0%</td>
+  {% elif v >= 10  %}<td class="num p3">+{{ '%.1f'|format(v) }}%</td>
+  {% elif v >= 5  %}<td class="num p2">+{{ '%.1f'|format(v) }}%</td>
+  {% elif v >= 2.5  %}<td class="num p1">+{{ '%.1f'|format(v) }}%</td>
+  {% elif v > 0   %}<td class="num p0">+{{ '%.1f'|format(v) }}%</td>
+  {% elif v > -2.5  %}<td class="num n0">{{ '%.1f'|format(v) }}%</td>
+  {% elif v > -5  %}<td class="num n1">{{ '%.1f'|format(v) }}%</td>
+  {% elif v > -10 %}<td class="num n2">{{ '%.1f'|format(v) }}%</td>
+  {% else         %}<td class="num n3">{{ '%.1f'|format(v) }}%</td>
+  {% endif %}
+{% endmacro %}
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Risk On / Off Indicator</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<title>ETF Dashboard</title>
 <style>
-  :root {
-    --bg:       #070d18;
-    --surface:  #0d1624;
-    --card:     #111d2e;
-    --border:   #1d2f45;
-    --border2:  #253650;
-    --text:     #dce8f5;
-    --muted:    #5a7494;
-    --dim:      #2e4460;
-    --risk-on:  #10b981;
-    --lean-on:  #34d399;
-    --neutral:  #f59e0b;
-    --lean-off: #f87171;
-    --risk-off: #ef4444;
-    --accent:   #3b82f6;
-    --mono:     "JetBrains Mono", monospace;
-    --sans:     "IBM Plex Sans", sans-serif;
-  }
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    min-height: 100vh;
-    padding: 2rem 1rem 3rem;
-    background-image:
-      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(59,130,246,0.06), transparent),
-      linear-gradient(180deg, #070d18 0%, #060b14 100%);
-  }
-  .wrap { max-width: 860px; margin: 0 auto; }
-  .page-header {
-    display: flex; align-items: baseline;
-    justify-content: space-between;
-    margin-bottom: 2.5rem; gap: 1rem; flex-wrap: wrap;
-  }
-  .page-title {
-    font-family: var(--mono); font-size: 0.7rem;
-    font-weight: 600; letter-spacing: 0.18em;
-    text-transform: uppercase; color: var(--muted);
-  }
-  .page-title span {
-    display: inline-block; width: 6px; height: 6px;
-    border-radius: 50%; background: var(--accent);
-    margin-right: 0.5rem; vertical-align: middle;
-    box-shadow: 0 0 8px var(--accent);
-    animation: pulse 2.5s ease-in-out infinite;
-  }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-  .header-meta { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }
-  .back-link {
-    font-family: var(--mono); font-size: 0.68rem;
-    color: var(--muted); text-decoration: none;
-    letter-spacing: 0.06em;
-  }
-  .back-link:hover { color: var(--text); }
-  .card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 10px; overflow: hidden;
-  }
-  .gauge-card {
-    padding: 2rem 1.5rem 1.5rem; margin-bottom: 1rem;
-    position: relative;
-  }
-  .gauge-card::before {
-    content: ""; position: absolute; inset: 0; border-radius: 10px;
-    background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(59,130,246,0.04), transparent);
-    pointer-events: none;
-  }
-  .gauge-wrap { display: flex; flex-direction: column; align-items: center; }
-  #gauge-svg-container { width: 100%; max-width: 460px; }
-  .signal-row {
-    display: flex; align-items: center;
-    gap: 1.25rem; margin-top: -0.5rem;
-  }
-  .signal-pill {
-    font-family: var(--mono); font-size: 0.75rem;
-    font-weight: 700; letter-spacing: 0.14em;
-    text-transform: uppercase; padding: 0.45rem 1.25rem;
-    border-radius: 4px; border-width: 1px; border-style: solid;
-    transition: all 0.4s ease;
-  }
-  .score-block { text-align: center; }
-  .score-num {
-    font-family: var(--mono); font-size: 2.8rem;
-    font-weight: 700; line-height: 1; letter-spacing: -0.02em;
-    font-variant-numeric: tabular-nums; transition: color 0.4s ease;
-  }
-  .score-sub {
-    font-family: var(--mono); font-size: 0.62rem;
-    letter-spacing: 0.15em; color: var(--muted);
-    text-transform: uppercase; margin-top: 0.2rem;
-  }
-  .components-count {
-    font-family: var(--mono); font-size: 0.65rem;
-    color: var(--muted); text-align: center; margin-top: 1rem;
-    letter-spacing: 0.08em; border-top: 1px solid var(--border);
-    padding-top: 0.75rem;
-  }
-  .alert-card {
-    display: flex; align-items: center; gap: 0.75rem;
-    padding: 0.85rem 1.25rem; border-radius: 8px;
-    background: rgba(245,158,11,0.07);
-    border: 1px solid rgba(245,158,11,0.3);
-    margin-bottom: 1rem; font-size: 0.85rem;
-    color: #fcd34d; font-family: var(--mono);
-  }
-  .alert-icon { font-size: 1.1rem; flex-shrink: 0; }
-  .breakdown-card { margin-bottom: 1rem; }
-  .breakdown-header {
-    display: grid;
-    grid-template-columns: 1fr 70px 130px 50px;
-    gap: 0.75rem; padding: 0.65rem 1.25rem;
-    border-bottom: 1px solid var(--border);
-    font-family: var(--mono); font-size: 0.6rem;
-    font-weight: 600; letter-spacing: 0.14em;
-    text-transform: uppercase; color: var(--muted);
-  }
-  .comp-row {
-    display: grid;
-    grid-template-columns: 1fr 70px 130px 50px;
-    gap: 0.75rem; align-items: center;
-    padding: 0.75rem 1.25rem;
-    border-bottom: 1px solid var(--border);
-    transition: background 0.15s;
-  }
-  .comp-row:last-child { border-bottom: none; }
-  .comp-row:hover { background: rgba(255,255,255,0.02); }
-  .comp-name { font-size: 0.82rem; color: var(--text); line-height: 1.3; }
-  .comp-name small {
-    display: block; font-size: 0.7rem; color: var(--muted);
-    margin-top: 0.15rem; line-height: 1.3;
-  }
-  .comp-z {
-    font-family: var(--mono); font-size: 0.85rem;
-    font-weight: 600; text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-  .z-bar-wrap {
-    position: relative; height: 5px;
-    background: rgba(255,255,255,0.04); border-radius: 2px;
-  }
-  .z-bar-mid {
-    position: absolute; left: 50%; top: -2px;
-    width: 1px; height: 9px; background: var(--dim);
-  }
-  .z-bar-fill {
-    position: absolute; top: 0; height: 100%;
-    border-radius: 2px; transition: width 0.6s ease, left 0.6s ease;
-  }
-  .comp-weight {
-    font-family: var(--mono); font-size: 0.68rem;
-    color: var(--muted); text-align: right; letter-spacing: 0.04em;
-  }
-  .legend-card {
-    display: grid; grid-template-columns: repeat(5,1fr);
-    overflow: hidden; border-radius: 8px;
-    border: 1px solid var(--border); margin-bottom: 1rem;
-  }
-  .legend-item {
-    text-align: center; padding: 0.6rem 0.4rem;
-    border-right: 1px solid var(--border);
-    font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.06em;
-  }
-  .legend-item:last-child { border-right: none; }
-  .legend-dot {
-    display: inline-block; width: 7px; height: 7px;
-    border-radius: 50%; margin-bottom: 0.3rem;
-  }
-  .footer-row {
-    display: flex; align-items: center;
-    justify-content: space-between;
-    gap: 1rem; flex-wrap: wrap; padding: 0 0.25rem;
-  }
-  .footer-note {
-    font-family: var(--mono); font-size: 0.65rem;
-    color: var(--muted); line-height: 1.6;
-  }
-  .refresh-btn {
-    background: var(--card); border: 1px solid var(--border2);
-    color: var(--text); font-family: var(--mono);
-    font-size: 0.7rem; padding: 0.45rem 1rem;
-    border-radius: 5px; cursor: pointer;
-    letter-spacing: 0.08em; transition: background 0.15s;
-  }
-  .refresh-btn:hover { background: var(--border); }
-  .state-center {
-    text-align: center; padding: 3.5rem 2rem;
-    font-family: var(--mono); font-size: 0.8rem; color: var(--muted);
-  }
-  .state-error {
-    padding: 1.25rem;
-    background: rgba(239,68,68,0.07);
-    border: 1px solid rgba(239,68,68,0.25);
-    border-radius: 8px; font-family: var(--mono);
-    font-size: 0.8rem; color: #fca5a5; text-align: center;
-  }
-  .spinner {
-    display: inline-block; width: 16px; height: 16px;
-    border: 2px solid var(--border2);
-    border-top-color: var(--accent);
-    border-radius: 50%; animation: spin 0.8s linear infinite;
-    margin-right: 0.6rem; vertical-align: middle;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .stale-note {
-    font-family: var(--mono); font-size: 0.65rem;
-    color: var(--muted); text-align: center;
-    margin-top: 0.5rem;
-  }
-  @media (max-width: 560px) {
-    .breakdown-header,
-    .comp-row { grid-template-columns: 1fr 60px 100px; }
-    .comp-weight { display: none; }
-    .legend-card { grid-template-columns: repeat(3,1fr); }
-    .legend-item:nth-child(n+4) { border-top: 1px solid var(--border); }
-    .signal-row { flex-direction: column; gap: 0.75rem; }
-  }
+:root {
+  --bg:      #eef1f6;
+  --surface: #ffffff;
+  --header:  #0f2240;
+  --border:  #d0d7e3;
+  --text:    #1a2035;
+  --muted:   #6b7280;
+  --accent:  #2563eb;
+  --gold:    #b45309;
+
+  --eq-bg:   #fff7ed;
+  --sec-bg:  #fdf4ff;
+  --intl-bg: #eff6ff;
+  --bond-bg: #f0fdf4;
+  --com-bg:  #fefce8;
+  --cur-bg:  #fff1f2;
+  --the-bg:  #f0f9ff;
+  --alt-bg:  #f5f3ff;
+
+  --p3:#14532d; --p3t:#bbf7d0;
+  --p2:#166534; --p2t:#dcfce7;
+  --p1:#15803d; --p1t:#f0fdf4;
+  --p0:#d1fae5; --p0t:#065f46;
+  --n0:#fee2e2; --n0t:#991b1b;
+  --n1:#fca5a5; --n1t:#7f1d1d;
+  --n2:#ef4444; --n2t:#ffffff;
+  --n3:#991b1b; --n3t:#fecaca;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; zoom: 0.9; }
+
+header {
+  background: var(--header);
+  color: #fff;
+  padding: 10px 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 8px;
+  position: sticky; top: 0; z-index: 20;
+  box-shadow: 0 2px 6px rgba(0,0,0,.3);
+}
+.h-left h1 { font-size: 16px; font-weight: 700; }
+.h-left .formula { font-size: 10.5px; color: #93c5fd; margin-top: 2px; }
+.h-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.badge { background: rgba(255,255,255,.12); border-radius: 6px; padding: 4px 10px; font-size: 11px; color: #cbd5e1; }
+.badge b { color: #fff; }
+.risk-pill { border-radius: 6px; padding: 5px 12px; font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.risk-green { background: #166534; color: #bbf7d0; }
+.risk-red   { background: #991b1b; color: #fecaca; }
+.risk-grey  { background: #374151; color: #d1d5db; }
+.risk-dot   { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.rdot-green { background: #4ade80; }
+.rdot-red   { background: #f87171; }
+.rdot-grey  { background: #9ca3af; }
+.btn-link2 { border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; color: #fff; }
+.btn-link { border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; color: #fff; }
+
+.legend {
+  background: #f8fafc; border-bottom: 1px solid var(--border);
+  padding: 6px 14px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  font-size: 11px; color: var(--muted);
+}
+.legend b { color: var(--text); }
+.flag-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; vertical-align: middle; }
+.dot-g { background: #16a34a; } .dot-r { background: #dc2626; } .dot-gr { background: #9ca3af; }
+.cat-chip { border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600; border: 1px solid; }
+.chip-eq  { background: var(--eq-bg);  color: #9a3412; border-color: #fdba74; }
+.chip-sec { background: var(--sec-bg); color: #6b21a8; border-color: #d8b4fe; }
+.chip-int { background: var(--intl-bg);color: #1e40af; border-color: #93c5fd; }
+.chip-bnd { background: var(--bond-bg);color: #166534; border-color: #86efac; }
+.chip-com { background: var(--com-bg); color: #713f12; border-color: #fcd34d; }
+.chip-cur { background: var(--cur-bg); color: #9f1239; border-color: #fda4af; }
+.chip-the { background: var(--the-bg); color: #0e7490; border-color: #67e8f9; }
+.chip-alt { background: var(--alt-bg); color: #5b21b6; border-color: #c4b5fd; }
+
+.toggle-bar { background: #f1f5f9; border-bottom: 1px solid var(--border); padding: 4px 14px; font-size: 11px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+.toggle-bar button { background: none; border: 1px solid var(--border); border-radius: 4px; padding: 2px 9px; font-size: 11px; cursor: pointer; color: var(--accent); }
+.toggle-bar button:hover { background: #e0e7ff; }
+
+.table-wrap { overflow-x: auto; padding: 10px 8px 24px; }
+table { border-collapse: collapse; min-width: 1100px; width: 100%; background: var(--surface); border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+
+thead th {
+  background: #1e2d45; color: #93c5fd;
+  font-size: 11px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
+  padding: 6px 6px; border-bottom: 2px solid #334155;
+  cursor: pointer; user-select: none; white-space: nowrap;
+  position: sticky; top: 0; z-index: 5;
+}
+thead th:hover { color: #fff; }
+thead th.sorted-asc::after  { content: " ▲"; color: #fbbf24; }
+thead th.sorted-desc::after { content: " ▼"; color: #fbbf24; }
+.gh { background: #0f172a !important; color: #64748b !important; font-size: 9.5px !important; text-align: center; border-bottom: 1px solid #334155 !important; cursor: default !important; position: sticky; top: 0; z-index: 5; }
+.gh-perf { color: #4ade80 !important; }
+.gh-ind  { color: #fbbf24 !important; }
+.gh-flag { color: #fb923c !important; }
+.gh-bar  { color: #a78bfa !important; }
+.gh-vol  { color: #38bdf8 !important; }
+
+tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .1s; }
+tbody tr:hover { background: #f0f7ff !important; }
+
+tr.cat-equity      { background: var(--eq-bg); }
+tr.cat-sector      { background: var(--sec-bg); }
+tr.cat-intl        { background: var(--intl-bg); }
+tr.cat-bond        { background: var(--bond-bg); }
+tr.cat-commodity   { background: var(--com-bg); }
+tr.cat-currency    { background: var(--cur-bg); }
+tr.cat-thematic    { background: var(--the-bg); }
+tr.cat-alternative { background: var(--alt-bg); }
+
+td { padding: 3px 3px; white-space: nowrap; vertical-align: middle; }
+td.rank  { font-weight: 800; font-size: 13px; color: var(--gold); text-align: center; width: 30px; }
+td.sym a { font-weight: 700; font-size: 13px; font-family: 'Courier New', monospace; color: var(--accent); text-decoration: none; }
+td.sym a:hover { text-decoration: underline; }
+td.fname { max-width: 170px; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+td.ftype { max-width: 140px; overflow: hidden; text-overflow: ellipsis; font-weight: 500; font-size: 12px; }
+td.spark { width:110px; padding: 3px 3px; }
+td.num   { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; min-width: 20px; }
+td.na    { text-align: right; color: var(--muted); }
+td.rs    { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 54px; }
+td.zsc   { text-align: right; font-variant-numeric: tabular-nums; min-width: 44px; color: var(--muted); }
+td.exp   { text-align: right; font-variant-numeric: tabular-nums; min-width: 36px; color: #0f766e; font-weight: 600; }
+td.flag-cell { text-align: center; padding: 3px 3px; min-width: 34px; }
+
+/* Volume flow cell */
+td.vol-cell { text-align: center; padding: 3px 2px; min-width: 28px; font-size: 15px; line-height: 1.2; }
+.vol-up   { color: #16a34a; font-weight: 700; }
+.vol-down { color: #dc2626; font-weight: 700; }
+.vol-pos  { color: #16a34a; font-size: 13px; font-weight: 700; }
+.vol-neg  { color: #dc2626; font-size: 13px; font-weight: 700; }
+
+.p3 { background: var(--p3) !important; color: var(--p3t); }
+.p2 { background: var(--p2) !important; color: var(--p2t); }
+.p1 { background: var(--p1) !important; color: var(--p1t); }
+.p0 { background: var(--p0) !important; color: var(--p0t); }
+.n0 { background: var(--n0) !important; color: var(--n0t); }
+.n1 { background: var(--n1) !important; color: var(--n1t); }
+.n2 { background: var(--n2) !important; color: var(--n2t); }
+.n3 { background: var(--n3) !important; color: var(--n3t); }
+.zero { background: #f9fafb !important; color: var(--muted); text-align: right; }
+
+.fc { display: inline-block; width: 13px; height: 13px; border-radius: 50%; }
+.fc-green { background: #16a34a; box-shadow: 0 0 4px #16a34a88; }
+.fc-red   { background: #dc2626; box-shadow: 0 0 4px #dc262688; }
+.fc-grey  { background: #d1d5db; }
+
+.pill-ob { background: #fff7ed; color: #c2410c; border: 1px solid #fb923c; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 700; }
+.pill-os { background: #eff6ff; color: #1d4ed8; border: 1px solid #60a5fa; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 700; }
+.rs-hi   { color: #15803d; }
+.rs-mid  { color: #4b5563; }
+.rs-lo   { color: #dc2626; }
+
+td.bar-cell { min-width: 160px; padding: 4px 6px; }
+.bar-wrap { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
+.bar-track { flex: 1; background: #e5e7eb; border-radius: 3px; height: 8px; position: relative; min-width: 60px; }
+.bar-fill  { height: 100%; background: #2563eb; border-radius: 3px; min-width: 2px; }
+.bar-lo, .bar-hi { font-size: 9.5px; min-width: 30px; }
+.bar-lo { text-align: right; } .bar-hi { text-align: left; }
+
+.col-hidden { display: none; }
+footer { text-align: center; padding: 16px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--border); background: var(--surface); }
+
+.type-label {
+  display: inline-block; border-radius: 4px; padding: 1px 6px;
+  font-size: 10px; font-weight: 600; border: 1px solid; white-space: nowrap;
+}
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <div class="page-header">
-    <div>
-      <div class="page-title"><span></span>Risk On / Off Indicator</div>
-      <a class="back-link" href="/">&#8592; Back to Dashboard</a>
-    </div>
-    <div class="header-meta" id="header-ts">-</div>
+{% if error %}
+<div style="background:#991b1b;color:#fecaca;text-align:center;padding:10px;font-size:13px;font-weight:600;">⚠ Error: {{ error }}</div>
+{% endif %}
+{% if is_loading %}
+<div id="loading-banner" style="background:#1e40af;color:#fff;padding:10px 16px;font-size:12.5px;display:flex;align-items:center;gap:12px;justify-content:center;">
+  <span>⏳</span>
+  <span>Loading ETF data...</span>
+  <span id="prog" style="opacity:.8">{{ progress }}</span>
+  <span id="fcnt" style="opacity:.6;font-size:11px;"></span>
+</div>
+<script>
+(function poll(){
+  setTimeout(function(){
+    fetch('/status').then(r=>r.json()).then(d=>{
+      var p=document.getElementById('prog'), c=document.getElementById('fcnt');
+      if(p) p.textContent=d.progress||'';
+      if(c) c.textContent=d.funds>0?'('+d.funds+' loaded)':'';
+      if(d.phase>=4 && d.funds>0){ location.reload(); } else { poll(); }
+    }).catch(()=>poll());
+  },5000);
+})();
+</script>
+{% endif %}
+
+<header>
+  <div class="h-left">
+    <h1>📊 ETF Performance Dashboard (updated daily at 6:00pm CT)</h1>
+    <div class="formula">Relative Strength Score = (1D×10%) + (1W×20%) + (1Mx30%) + (3M×40%) &nbsp;|&nbsp; Rank 1 = strongest</div>
   </div>
 
-  <div id="alert-zone"></div>
-
-  <div class="card gauge-card" id="gauge-card">
-    <div class="state-center"><span class="spinner"></span>Loading indicator...</div>
+{% if risk %}
+<a href="/risk-indicator" target="_blank" style="text-decoration:none;">
+  <div style="
+    display: inline-flex; align-items: center; gap: 0.6rem;
+    padding: 0.4rem 0.85rem 0.4rem 0.6rem; border-radius: 6px;
+    background: {{ risk.signal_color }}12; border: 1px solid {{ risk.signal_color }}44;
+    cursor: pointer; transition: background 0.15s;
+  ">
+    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{{ risk.signal_color }};box-shadow:0 0 6px {{ risk.signal_color }};flex-shrink:0;"></span>
+    <span style="font-family:monospace;font-size:0.75rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:{{ risk.signal_color }};">{{ risk.signal }}</span>
+    <span style="font-family:monospace;font-size:0.72rem;color:#6b8aaa;letter-spacing:0.04em;">{% if risk.composite >= 0 %}+{% endif %}{{ "%.2f"|format(risk.composite) }}</span>
   </div>
-
-  <div class="card breakdown-card" id="breakdown-card" style="display:none">
-    <div class="breakdown-header">
-      <div>Component</div>
-      <div style="text-align:right">Z-Score</div>
-      <div>Reading (plus/minus 3)</div>
-      <div style="text-align:right">Weight</div>
-    </div>
-    <div id="comp-rows"></div>
+</a>
+{% else %}
+<a href="/risk-indicator" target="_blank" style="text-decoration:none;">
+  <div style="display:inline-flex;align-items:center;gap:0.6rem;padding:0.4rem 0.85rem 0.4rem 0.6rem;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);cursor:pointer;">
+    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#4a6070;flex-shrink:0;"></span>
+    <span style="font-family:monospace;font-size:0.75rem;letter-spacing:0.08em;color:#5a7494;text-transform:uppercase;">Risk Indicator</span>
+    <span style="font-family:monospace;font-size:0.7rem;color:#3a5060;">--</span>
   </div>
+</a>
+{% endif %}
 
-  <!-- Accuracy tracker card -->
-  <div class="card" id="accuracy-card" style="display:none;margin-bottom:1rem;">
-
-    <!-- Header row -->
-    <div style="
-      display:flex;align-items:center;justify-content:space-between;
-      padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);
-    ">
-      <div style="font-family:var(--mono);font-size:0.65rem;font-weight:600;
-                  letter-spacing:0.14em;text-transform:uppercase;color:var(--muted);">
-        Signal Accuracy Tracker
-      </div>
-      <div id="acc-days-note" style="font-family:var(--mono);font-size:0.62rem;color:var(--dim);"></div>
+{% if breadth and breadth.sma21.total > 0 %}
+<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+  <div style="display:flex;flex-direction:column;gap:3px;width:185px;flex-shrink:0;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;">
+      <span style="font-size:0.68rem;font-weight:700;color:#22c55e;font-family:monospace;white-space:nowrap;">{{ breadth.sma21.above_pct }}% ({{ breadth.sma21.above }})</span>
+      <span style="font-size:0.58rem;color:#e8e7e3;letter-spacing:0.1em;text-transform:uppercase;flex-shrink:0;padding:0 4px;">1 MONTH</span>
+      <span style="font-size:0.68rem;font-weight:700;color:#f87171;font-family:monospace;white-space:nowrap;">({{ breadth.sma21.below }}) {{ breadth.sma21.below_pct }}%</span>
     </div>
-
-    <!-- Top stats row -->
-    <div style="display:grid;grid-template-columns:1fr 1px 1fr 1px 1fr 1px 1fr;
-                border-bottom:1px solid var(--border);">
-
-      <!-- Overall -->
-      <div style="padding:1rem 1.25rem;text-align:center;">
-        <div style="font-family:var(--mono);font-size:0.58rem;letter-spacing:0.12em;
-                    text-transform:uppercase;color:var(--muted);margin-bottom:0.35rem;">
-          Overall
-        </div>
-        <div id="acc-overall" style="font-family:var(--mono);font-size:1.6rem;
-                                     font-weight:700;letter-spacing:-0.02em;">--</div>
-        <div id="acc-overall-n" style="font-family:var(--mono);font-size:0.62rem;
-                                        color:var(--muted);margin-top:0.2rem;"></div>
-      </div>
-
-      <div style="background:var(--border);"></div>
-
-      <!-- Directional -->
-      <div style="padding:1rem 1.25rem;text-align:center;">
-        <div style="font-family:var(--mono);font-size:0.58rem;letter-spacing:0.12em;
-                    text-transform:uppercase;color:var(--muted);margin-bottom:0.35rem;">
-          Directional
-        </div>
-        <div id="acc-dir" style="font-family:var(--mono);font-size:1.6rem;
-                                  font-weight:700;letter-spacing:-0.02em;">--</div>
-        <div id="acc-dir-n" style="font-family:var(--mono);font-size:0.62rem;
-                                    color:var(--muted);margin-top:0.2rem;"></div>
-      </div>
-
-      <div style="background:var(--border);"></div>
-
-      <!-- Bullish -->
-      <div style="padding:1rem 1.25rem;text-align:center;">
-        <div style="font-family:var(--mono);font-size:0.58rem;letter-spacing:0.12em;
-                    text-transform:uppercase;color:#34d399;margin-bottom:0.35rem;">
-          Bullish calls
-        </div>
-        <div id="acc-bull" style="font-family:var(--mono);font-size:1.6rem;
-                                   font-weight:700;color:#34d399;letter-spacing:-0.02em;">--</div>
-        <div id="acc-bull-n" style="font-family:var(--mono);font-size:0.62rem;
-                                     color:var(--muted);margin-top:0.2rem;"></div>
-      </div>
-
-      <div style="background:var(--border);"></div>
-
-      <!-- Bearish -->
-      <div style="padding:1rem 1.25rem;text-align:center;">
-        <div style="font-family:var(--mono);font-size:0.58rem;letter-spacing:0.12em;
-                    text-transform:uppercase;color:#f87171;margin-bottom:0.35rem;">
-          Bearish calls
-        </div>
-        <div id="acc-bear" style="font-family:var(--mono);font-size:1.6rem;
-                                   font-weight:700;color:#f87171;letter-spacing:-0.02em;">--</div>
-        <div id="acc-bear-n" style="font-family:var(--mono);font-size:0.62rem;
-                                     color:var(--muted);margin-top:0.2rem;"></div>
-      </div>
-    </div>
-
-    <!-- Accuracy bar (overall) -->
-    <div style="padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);">
-      <div style="display:flex;height:6px;border-radius:3px;overflow:hidden;
-                  background:rgba(255,255,255,0.04);gap:1px;" id="acc-bar">
-        <div id="acc-bar-correct" style="background:#16a34a;height:100%;border-radius:3px 0 0 3px;transition:width 0.5s ease;"></div>
-        <div id="acc-bar-wrong"   style="background:#dc2626;height:100%;border-radius:0 3px 3px 0;flex:1;"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-top:4px;">
-        <span style="font-family:var(--mono);font-size:0.6rem;color:#16a34a;">Correct</span>
-        <span style="font-family:var(--mono);font-size:0.6rem;color:#6b7280;" id="acc-bar-label"></span>
-        <span style="font-family:var(--mono);font-size:0.6rem;color:#dc2626;">Incorrect</span>
-      </div>
-    </div>
-
-    <!-- Recent history table -->
-    <div style="padding:0.5rem 0;">
-      <div style="display:grid;grid-template-columns:90px 110px 70px 70px 70px 60px;
-                  padding:0.4rem 1.25rem;gap:0.5rem;border-bottom:1px solid var(--border);
-                  font-family:var(--mono);font-size:0.58rem;font-weight:600;
-                  letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);">
-        <div>Date</div>
-        <div>Signal</div>
-        <div style="text-align:right;">Predicted</div>
-        <div style="text-align:right;">SPY chg</div>
-        <div style="text-align:right;">Actual</div>
-        <div style="text-align:right;">Result</div>
-      </div>
-      <div id="acc-history-rows"></div>
-    </div>
-
-    <!-- Methodology note -->
-    <div style="padding:0.65rem 1.25rem;border-top:1px solid var(--border);
-                font-family:var(--mono);font-size:0.62rem;color:var(--dim);
-                line-height:1.6;">
-      Bullish correct if SPY next day &gt; +0.1% &nbsp;&middot;&nbsp;
-      Bearish correct if SPY next day &lt; -0.1% &nbsp;&middot;&nbsp;
-      Neutral correct if SPY next day within &plusmn;0.1% &nbsp;&middot;&nbsp;
-      Rolling 252-day window
+    <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:#0d1624;gap:1px;">
+      <div style="height:100%;width:{{ breadth.sma21.above_pct }}%;background:#16a34a;border-radius:3px 0 0 3px;min-width:{% if breadth.sma21.above > 0 %}2px{% else %}0{% endif %};flex-shrink:0;"></div>
+      <div style="height:100%;flex:1;background:#dc2626;border-radius:0 3px 3px 0;min-width:{% if breadth.sma21.below > 0 %}2px{% else %}0{% endif %};"></div>
     </div>
   </div>
 
-  <div class="legend-card">
-    <div class="legend-item">
-      <div class="legend-dot" style="background:#ef4444"></div>
-      <div style="color:#f87171">Risk Off</div>
-      <div style="color:var(--muted)">z &lt; -1</div>
+  <div style="width:1px;height:28px;background:rgba(255,255,255,0.1);flex-shrink:0;"></div>
+
+  <div style="display:flex;flex-direction:column;gap:3px;width:185px;flex-shrink:0;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;">
+      <span style="font-size:0.68rem;font-weight:700;color:#22c55e;font-family:monospace;white-space:nowrap;">{{ breadth.sma63.above_pct }}% ({{ breadth.sma63.above }})</span>
+      <span style="font-size:0.58rem;color:#e8e7e3;letter-spacing:0.1em;text-transform:uppercase;flex-shrink:0;padding:0 4px;">3 MONTH</span>
+      <span style="font-size:0.68rem;font-weight:700;color:#f87171;font-family:monospace;white-space:nowrap;">({{ breadth.sma63.below }}) {{ breadth.sma63.below_pct }}%</span>
     </div>
-    <div class="legend-item">
-      <div class="legend-dot" style="background:#f87171"></div>
-      <div style="color:#fca5a5">Lean Off</div>
-      <div style="color:var(--muted)">-1 to -1/4</div>
-    </div>
-    <div class="legend-item">
-      <div class="legend-dot" style="background:#f59e0b"></div>
-      <div style="color:#fcd34d">Neutral</div>
-      <div style="color:var(--muted)">-1/4 to +1/4</div>
-    </div>
-    <div class="legend-item">
-      <div class="legend-dot" style="background:#34d399"></div>
-      <div style="color:#6ee7b7">Lean On</div>
-      <div style="color:var(--muted)">+1/4 to +1</div>
-    </div>
-    <div class="legend-item">
-      <div class="legend-dot" style="background:#10b981"></div>
-      <div style="color:#34d399">Risk On</div>
-      <div style="color:var(--muted)">z &gt; +1</div>
+    <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:#0d1624;gap:1px;">
+      <div style="height:100%;width:{{ breadth.sma63.above_pct }}%;background:#16a34a;border-radius:3px 0 0 3px;min-width:{% if breadth.sma63.above > 0 %}2px{% else %}0{% endif %};flex-shrink:0;"></div>
+      <div style="height:100%;flex:1;background:#dc2626;border-radius:0 3px 3px 0;min-width:{% if breadth.sma63.below > 0 %}2px{% else %}0{% endif %};"></div>
     </div>
   </div>
+</div>
+{% endif %}
 
-  <div class="footer-row">
-    <div class="footer-note">
-      6-component composite &middot; 252-day z-scores &middot; 2-8 week horizon<br>
-      Weights: Credit 25% &middot; Equity 35% &middot; Macro 20% &middot; FX 15% &middot; VIX 5%<br>
-      Updated once daily during nightly data refresh
-    </div>
-    <button class="refresh-btn" onclick="loadData()">&#8635; Reload</button>
-  </div>
+<a class="btn-link2" href="https://market-regime-o4fi.onrender.com" target="_blank" style="background:#4a5b7e;">Regime</a>
+<a class="btn-link" href="https://gex-vizualizer.vercel.app/" target="_blank" style="background:#e5c689;">GEX</a>
+</div>
+</header>
 
+<div class="legend">
+  <b>Flags:</b>
+  <span><span class="flag-dot dot-g"></span> Above SMA</span>
+  <span><span class="flag-dot dot-gr"></span> At SMA</span>
+  <span><span class="flag-dot dot-r"></span> Below SMA</span>
+  &nbsp;|&nbsp; <b>1M</b>=21-day &nbsp; <b>3M</b>=63-day &nbsp;|&nbsp;
+  <b>Vol(ume):</b> ▲/▼ = 5d vs 21d avg &nbsp; +/− = vs week ago &nbsp;|&nbsp;
+  <b>Categories:</b>
+  <span class="cat-chip chip-eq">Equity US</span>
+  <span class="cat-chip chip-sec">Sector</span>
+  <span class="cat-chip chip-int">Intl Equity</span>
+  <span class="cat-chip chip-bnd">Bond</span>
+  <span class="cat-chip chip-com">Commodity</span>
+  <span class="cat-chip chip-cur">Currency</span>
+  <span class="cat-chip chip-the">Thematic</span>
+  <span class="cat-chip chip-alt">Alternative</span>
 </div>
 
+<div class="toggle-bar">
+  <span>Optional:</span>
+  <button onclick="toggleCol('cat-col')">Category</button>
+  <button onclick="toggleCol('rs-col')">RS Score</button>
+  <button onclick="toggleCol('zsc-col')">Z-Score</button>
+  <button onclick="toggleCol('obos-col')">OB/OS</button>
+  <button onclick="toggleCol('exp-col')">Exp Ratio</button>
+  <span style="margin-left:auto;color:var(--muted);font-size:11px;">OB = Overbought | OS = Oversold  | Symbol → Yahoo Finance</span>
+</div>
+
+<div class="table-wrap">
+<table id="ft">
+  <thead>
+    <tr>
+      <th class="gh" colspan="3"></th>
+      <th class="gh" colspan="1"></th>
+      <th class="gh gh-ind col-hidden cat-col" colspan="1">Category</th>
+      <th class="gh gh-vol" colspan="1"></th>
+      <th class="gh gh-perf" colspan="7">◀ Performance % ▶</th>
+      <th class="gh gh-bar"  colspan="1">3-Yr Range</th>
+      <th class="gh gh-ind col-hidden exp-col"  colspan="1">Exp Ratio</th>
+      <th class="gh gh-ind col-hidden rs-col"   colspan="1">RS Score</th>
+      <th class="gh gh-ind col-hidden zsc-col"  colspan="1">Z-Score</th>
+      <th class="gh gh-ind col-hidden obos-col" colspan="1">OB/OS</th>
+      <th class="gh gh-flag" colspan="2">◀ Flags ▶</th>
+    </tr>
+    <tr>
+      <th onclick="sortTable(0)"  data-col="0">Rank</th>
+      <th onclick="sortTable(1)"  data-col="1">Symbol</th>
+      <th onclick="sortTable(2)"  data-col="2">ETF Name</th>
+      <th data-col="3" style="cursor:default">8-Mth Sparkline</th>
+      <th onclick="sortTable(4)"  data-col="4" class="col-hidden cat-col">Category | Style / Factor</th>
+      <th onclick="sortTable(5)"  data-col="5" title="▲/▼ = 5-day vs 21-day avg volume | +/− = change vs week ago">Vol Flow</th>
+      <th onclick="sortTable(6)"  data-col="6">1D</th>
+      <th onclick="sortTable(7)"  data-col="7">1W</th>
+      <th onclick="sortTable(8)"  data-col="8">1M</th>
+      <th onclick="sortTable(9)"  data-col="9">3M</th>
+      <th onclick="sortTable(10)" data-col="10">6M</th>
+      <th onclick="sortTable(11)" data-col="11">YTD</th>
+      <th onclick="sortTable(12)" data-col="12">1Y</th>
+      <th onclick="sortTable(13)" data-col="13" style="min-width:160px">Lo   ▸   Last   ▸   Hi</th>
+      <th onclick="sortTable(14)" data-col="14" class="col-hidden exp-col">Exp %</th>
+      <th onclick="sortTable(15)" data-col="15" class="col-hidden rs-col">RS Score</th>
+      <th onclick="sortTable(16)" data-col="16" class="col-hidden zsc-col">Z-Score</th>
+      <th onclick="sortTable(17)" data-col="17" class="col-hidden obos-col">OB / OS</th>
+      <th onclick="sortTable(18)" data-col="18">1Mth</th>
+      <th onclick="sortTable(19)" data-col="19">3Mth</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for f in funds %}
+  <tr class="cat-{{ f.category }}">
+    <td class="rank">{{ f.rank if f.rank else '—' }}</td>
+    <td class="sym"><a href="{{ f.morningstar_url }}" target="_blank">{{ f.symbol }}</a></td>
+    <td class="fname">{{ f.name }}</td>
+    <td class="spark">{{ f.sparkline | safe }}</td>
+
+    <!-- Category (hidden by default) -->
+    <td class="ftype col-hidden cat-col">
+      {% set cat = f.category %}
+      {% if cat == 'equity' %}
+        <span class="type-label" style="background:var(--eq-bg);color:#9a3412;border-color:#fdba74;">{{ f.type }}</span>
+      {% elif cat == 'sector' %}
+        <span class="type-label" style="background:var(--sec-bg);color:#6b21a8;border-color:#d8b4fe;">{{ f.type }}</span>
+      {% elif cat == 'intl' %}
+        <span class="type-label" style="background:var(--intl-bg);color:#1e40af;border-color:#93c5fd;">{{ f.type }}</span>
+      {% elif cat == 'bond' %}
+        <span class="type-label" style="background:var(--bond-bg);color:#166534;border-color:#86efac;">{{ f.type }}</span>
+      {% elif cat == 'commodity' %}
+        <span class="type-label" style="background:var(--com-bg);color:#713f12;border-color:#fcd34d;">{{ f.type }}</span>
+      {% elif cat == 'currency' %}
+        <span class="type-label" style="background:var(--cur-bg);color:#9f1239;border-color:#fda4af;">{{ f.type }}</span>
+      {% elif cat == 'thematic' %}
+        <span class="type-label" style="background:var(--the-bg);color:#0e7490;border-color:#67e8f9;">{{ f.type }}</span>
+      {% else %}
+        <span class="type-label" style="background:var(--alt-bg);color:#5b21b6;border-color:#c4b5fd;">{{ f.type }}</span>
+      {% endif %}
+    </td>
+
+    <!-- Volume Flow -->
+    <td class="vol-cell" title="▲/▼ = 5-day vs 21-day avg volume | +/− = trending vs week ago">
+      {% if f.vol_arrow %}
+        <span class="vol-{{ f.vol_arrow }}">{% if f.vol_arrow == 'up' %}▲{% else %}▼{% endif %}</span>
+        <span class="vol-{{ f.vol_change }}">{% if f.vol_change == 'pos' %}+{% else %}−{% endif %}</span>
+      {% else %}
+        <span style="color:var(--muted)">—</span>
+      {% endif %}
+    </td>
+
+    {{ pct_cell(f['1D'])  }}
+    {{ pct_cell(f['1W'])  }}
+    {{ pct_cell(f['1M'])  }}
+    {{ pct_cell(f['3M'])  }}
+    {{ pct_cell(f['6M'])  }}
+    {{ pct_cell(f['YTD']) }}
+    {{ pct_cell(f['1Y'])  }}
+
+    <td class="bar-cell">
+      {% if f.bar_pct is not none %}
+      <div class="bar-wrap">
+        <span class="bar-lo">${{ f.low3 }}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:{{ [f.bar_pct,100]|min }}%"></div></div>
+        <span class="bar-hi">${{ f.high3 }}</span>
+      </div>
+      <div style="font-size:9.5px;color:var(--muted);text-align:center;margin-top:1px;">Last ${{ f.last_price }} ({{ f.bar_pct }}%)</div>
+      {% else %}<span class="na">—</span>{% endif %}
+    </td>
+
+    <!-- Expense ratio (hidden by default) -->
+    <td class="exp num col-hidden exp-col">
+      {% if f.exp_ratio is not none %}{{ '%.2f'|format(f.exp_ratio) }}%{% else %}<span style="color:var(--muted)">—</span>{% endif %}
+    </td>
+
+    <!-- RS Score (hidden) -->
+    <td class="rs col-hidden rs-col {% if f.rs_score and f.rs_score > 1 %}rs-hi{% elif f.rs_score and f.rs_score < -1 %}rs-lo{% else %}rs-mid{% endif %}">
+      {{ '%.3f'|format(f.rs_score) if f.rs_score is not none else '—' }}
+    </td>
+
+    <!-- Z-Score (hidden) -->
+    <td class="zsc col-hidden zsc-col">{{ '%.2f'|format(f.zscore) if f.zscore is not none else '—' }}</td>
+
+    <!-- OB/OS (hidden) -->
+    <td class="flag-cell col-hidden obos-col">
+      {% if f.ob_os == 'Overbought' %}<span class="pill-ob">Overbought</span>
+      {% elif f.ob_os == 'Oversold'  %}<span class="pill-os">Oversold</span>
+      {% else %}<span style="color:var(--muted)">—</span>{% endif %}
+    </td>
+
+    <td class="flag-cell" title="1Mth: vs 21-day SMA"><span class="fc fc-{{ f.trade_flag }}"></span></td>
+    <td class="flag-cell" title="3Mth: vs 63-day SMA"><span class="fc fc-{{ f.trend_flag }}"></span></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<footer>
+  Data: Tiingo API &nbsp;|&nbsp; Refreshes after US market close ( 6:00PM CT) &nbsp;|&nbsp;
+  Expense ratios updated annually in funds.json &nbsp;|&nbsp; Symbol → Yahoo Finance &nbsp;|&nbsp; Click any column to sort
+</footer>
+
 <script>
-/*
-  Gauge coordinate system
-  -----------------------
-  Hub at (cx, cy) near the bottom of the SVG.
-  The semicircle opens upward. Scores map to angles as follows:
-
-    score = -3  ->  angle = pi   (180 deg, leftmost point)
-    score =  0  ->  angle = pi/2  (90 deg, top center)
-    score = +3  ->  angle = 0    (0 deg, rightmost point)
-
-  Direct formula: angle = pi * (3 - score) / 6
-
-  SVG position from angle:
-    x = cx + r * cos(angle)
-    y = cy - r * sin(angle)     <- minus because SVG Y increases downward
-
-  Verified:
-    score = -3  -> angle=pi   -> x=cx-r (left),  y=cy        correct
-    score =  0  -> angle=pi/2 -> x=cx,   y=cy-r  (top)       correct
-    score = +3  -> angle=0    -> x=cx+r (right), y=cy         correct
-    score = +0.70 -> angle~69 deg -> x=cx+0.36r (right-ish)  correct
-
-  Arc zones drawn from larger angle (left) to smaller angle (right).
-
-  SVG sweep-flag=1 (clockwise on screen) is required here.
-  Because our p1 has a LARGER angle than p2, the clockwise arc is the one
-  that travels over the top of the semicircle (the short path we want).
-  sweep=0 would go the long way around through the bottom, painting zones
-  on the wrong side. This is counter-intuitive but confirmed by the geometry:
-    p1 = leftmost (-3, angle=180deg), p2 = upper-left (-1, angle=120deg)
-    clockwise from left goes UP through 150deg to upper-left -> correct.
-*/
-function sToAngle(score) {
-  var s = Math.max(-3, Math.min(3, score));
-  return Math.PI * (3 - s) / 6;
+let sortCol = 0, sortAsc = true;
+function sortTable(col) {
+  const tbody = document.querySelector("#ft tbody");
+  const rows  = Array.from(tbody.rows);
+  if (sortCol === col) { sortAsc = !sortAsc; }
+  else { sortCol = col; sortAsc = (col <= 2 || col === 4); }
+  rows.sort((a, b) => {
+    const av = cellVal(a.cells[col]);
+    const bv = cellVal(b.cells[col]);
+    if (av === null && bv === null) return 0;
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    return sortAsc ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+  document.querySelectorAll("#ft thead tr:nth-child(2) th").forEach((th, i) => {
+    th.classList.remove("sorted-asc","sorted-desc");
+    if (i === col) th.classList.add(sortAsc ? "sorted-asc" : "sorted-desc");
+  });
 }
-function xyAt(angle, r, cx, cy) {
-  return [
-    cx + r * Math.cos(angle),
-    cy - r * Math.sin(angle)
-  ];
+function cellVal(cell) {
+  const circle = cell.querySelector(".fc");
+  if (circle) {
+    if (circle.classList.contains("fc-green")) return 1;
+    if (circle.classList.contains("fc-grey"))  return 0;
+    if (circle.classList.contains("fc-red"))   return -1;
+    return null;
+  }
+  // Volume flow cell: sort by arrow (▲=1, ▼=-1) then change (+1/−1)
+  const volUp   = cell.querySelector(".vol-up");
+  const volDown = cell.querySelector(".vol-down");
+  const volPos  = cell.querySelector(".vol-pos");
+  const volNeg  = cell.querySelector(".vol-neg");
+  if (volUp || volDown) {
+    return (volUp ? 1 : -1) + (volPos ? 0.1 : -0.1);
+  }
+  const t = cell.innerText.trim().replace(/[+%$,]/g,"");
+  if (t === "—" || t === "") return null;
+  const n = parseFloat(t);
+  return isNaN(n) ? t.toLowerCase() : n;
 }
-function arcSeg(s1, s2, r, cx, cy) {
-  // s1 < s2, so angle1 > angle2 (left to right across the gauge)
-  var a1 = sToAngle(s1), a2 = sToAngle(s2);
-  var p1 = xyAt(a1, r, cx, cy);
-  var p2 = xyAt(a2, r, cx, cy);
-  var la = (a1 - a2) > Math.PI ? 1 : 0;
-  // sweep=1 (clockwise in SVG) paints arcs going over the top, not through the bottom
-  return "M" + p1[0].toFixed(2) + "," + p1[1].toFixed(2) +
-         " A" + r + "," + r + " 0 " + la + ",1 " +
-         p2[0].toFixed(2) + "," + p2[1].toFixed(2);
+function toggleCol(cls) {
+  document.querySelectorAll("."+cls).forEach(el => el.classList.toggle("col-hidden"));
 }
-
-function buildGaugeSVG(composite, signalColor) {
-  var W = 460, H = 220, cx = W / 2, cy = H - 18, R = 150, TW = 32;
-
-  var zones = [
-    {s1:-3.00, s2:-1.00, c:"#ef4444"},
-    {s1:-1.00, s2:-0.25, c:"#f87171"},
-    {s1:-0.25, s2: 0.25, c:"#f59e0b"},
-    {s1: 0.25, s2: 1.00, c:"#34d399"},
-    {s1: 1.00, s2: 3.00, c:"#10b981"},
-  ];
-
-  var arc = function(s1, s2, r, sw, color, op) {
-    return '<path d="' + arcSeg(s1, s2, r, cx, cy) +
-           '" stroke="' + color + '" stroke-width="' + sw +
-           '" fill="none" stroke-linecap="butt" opacity="' + (op || 1) + '"/>';
-  };
-
-  var paths = "";
-  // Background track
-  paths += arc(-3, 3, R, TW + 8, "#0d1624", 1);
-  // Colored zones
-  for (var i = 0; i < zones.length; i++) {
-    paths += arc(zones[i].s1, zones[i].s2, R, TW, zones[i].c, 0.88);
-  }
-  // Subtle border rings
-  paths += arc(-3, 3, R + TW / 2 + 3, 1, "#1d2f45", 1);
-  paths += arc(-3, 3, R - TW / 2 - 3, 1, "#1d2f45", 1);
-
-  // Tick marks and labels
-  var ticks = [
-    {s:-3, lbl:"-3"},
-    {s:-1, lbl:"-1"},
-    {s: 0, lbl: "0"},
-    {s: 1, lbl:"+1"},
-    {s: 3, lbl:"+3"},
-  ];
-  for (var j = 0; j < ticks.length; j++) {
-    var tk = ticks[j];
-    var ang = sToAngle(tk.s);
-    var op  = xyAt(ang, R + TW / 2 + 4,  cx, cy);
-    var ip  = xyAt(ang, R - TW / 2 - 4,  cx, cy);
-    var lp  = xyAt(ang, R + TW / 2 + 20, cx, cy);
-    paths += '<line x1="' + op[0].toFixed(1) + '" y1="' + op[1].toFixed(1) +
-             '" x2="' + ip[0].toFixed(1) + '" y2="' + ip[1].toFixed(1) +
-             '" stroke="#2e4460" stroke-width="1.5"/>';
-    paths += '<text x="' + lp[0].toFixed(1) + '" y="' + lp[1].toFixed(1) +
-             '" text-anchor="middle" dominant-baseline="middle"' +
-             ' fill="#3d5a7a" font-size="10.5"' +
-             ' font-family="JetBrains Mono,monospace">' + tk.lbl + '</text>';
-  }
-
-  // Needle  — uses the same direct angle formula, no cos(pi-theta) ambiguity
-  var needleAngle = sToAngle(composite);
-  var np = xyAt(needleAngle, R - 14, cx, cy);
-  // Glow
-  paths += '<line x1="' + cx + '" y1="' + cy +
-           '" x2="' + np[0].toFixed(2) + '" y2="' + np[1].toFixed(2) +
-           '" stroke="' + signalColor + '" stroke-width="6"' +
-           ' stroke-linecap="round" opacity="0.18"/>';
-  // Needle shaft
-  paths += '<line x1="' + cx + '" y1="' + cy +
-           '" x2="' + np[0].toFixed(2) + '" y2="' + np[1].toFixed(2) +
-           '" stroke="#f0f8ff" stroke-width="2.5" stroke-linecap="round"/>';
-  // Hub
-  paths += '<circle cx="' + cx + '" cy="' + cy +
-           '" r="9" fill="#0d1624" stroke="' + signalColor + '" stroke-width="2.5"/>';
-  paths += '<circle cx="' + cx + '" cy="' + cy + '" r="3.5" fill="' + signalColor + '"/>';
-
-  return '<svg viewBox="0 0 ' + W + ' ' + H +
-         '" style="width:100%;display:block;overflow:visible"' +
-         ' xmlns="http://www.w3.org/2000/svg">' + paths + '</svg>';
-}
-
-function zBarHTML(z) {
-  if (z === null || z === undefined) {
-    return '<div style="color:var(--dim);font-size:0.7rem;font-family:var(--mono)">N/A</div>';
-  }
-  var cl = Math.max(-3, Math.min(3, z));
-  var pct = Math.abs(cl) / 3 * 50;
-  var isPos = cl >= 0;
-  var hue = isPos ? 145 : 5;
-  var color = "hsl(" + hue + ", 75%, 55%)";
-  var left  = isPos ? "50%" : ((50 - pct).toFixed(1) + "%");
-  var width = pct.toFixed(1) + "%";
-  return '<div class="z-bar-wrap"><div class="z-bar-mid"></div>' +
-         '<div class="z-bar-fill" style="left:' + left +
-         ';width:' + width + ';background:' + color + '"></div></div>';
-}
-
-function render(data) {
-  var alertZone = document.getElementById("alert-zone");
-  if (data.reversal_alert) {
-    alertZone.innerHTML = '<div class="alert-card"><span class="alert-icon">&#9889;</span><span>' + data.reversal_alert + '</span></div>';
-  } else {
-    alertZone.innerHTML = "";
-  }
-
-  var composite = data.composite;
-  var color = data.signal_color || "#f59e0b";
-  var label = data.signal || "Neutral";
-  var sign  = composite >= 0 ? "+" : "";
-
-  document.getElementById("gauge-card").innerHTML =
-    '<div class="gauge-wrap">' +
-    '<div id="gauge-svg-container">' + buildGaugeSVG(composite, color) + '</div>' +
-    '<div class="signal-row">' +
-    '<div class="signal-pill" style="color:' + color + ';border-color:' + color + '33;background:' + color + '0d">' + label + '</div>' +
-    '<div class="score-block">' +
-    '<div class="score-num" style="color:' + color + '">' + sign + composite.toFixed(2) + '</div>' +
-    '<div class="score-sub">composite z-score</div>' +
-    '</div>' +
-    '</div>' +
-    '<div class="components-count">' + data.components_used + ' / ' + data.components_total +
-    ' components active &nbsp;&middot;&nbsp; 252-day z-scores</div>' +
-    '</div>';
-
-  if (data.timestamp) {
-    document.getElementById("header-ts").textContent = data.timestamp;
-  }
-
-  var comps = data.components || [];
-  var rows = "";
-  for (var i=0; i<comps.length; i++) {
-    var c = comps[i];
-    var z = c.zscore;
-    var ok = (z !== null && z !== undefined && c.status === "ok");
-    var zStr = ok ? ((z >= 0 ? "+" : "") + z.toFixed(2)) : "-";
-    var zClr = !ok ? "var(--dim)" : (z > 0 ? "#34d399" : "#f87171");
-    var wPct = c.weight !== undefined ? Math.round(c.weight * 100) + "%" : "";
-    rows += '<div class="comp-row">' +
-      '<div class="comp-name">' + (c.label || c.key) + '<small>' + (c.description || "") + '</small></div>' +
-      '<div class="comp-z" style="color:' + zClr + '">' + zStr + '</div>' +
-      '<div>' + (ok ? zBarHTML(z) : '<div style="color:var(--dim);font-size:0.7rem;font-family:var(--mono)">unavailable</div>') + '</div>' +
-      '<div class="comp-weight">' + wPct + '</div>' +
-      '</div>';
-  }
-  document.getElementById("comp-rows").innerHTML = rows;
-  document.getElementById("breakdown-card").style.display = "block";
-
-  renderAccuracy(data.accuracy);
-}
-
-function renderAccuracy(acc) {
-  var card = document.getElementById("accuracy-card");
-  if (!acc || acc.overall_total === 0) {
-    card.style.display = "none";
-    return;
-  }
-  card.style.display = "block";
-
-  // Days progress note
-  var daysNote = acc.days_completed + " / " + acc.days_target + " trading days tracked";
-  if (acc.days_completed < acc.days_target) {
-    daysNote += " (building history)";
-  }
-  document.getElementById("acc-days-note").textContent = daysNote;
-
-  // Helper: format pct
-  function fmtPct(v, n) {
-    if (v === null || v === undefined) return "--";
-    return v.toFixed(1) + "%";
-  }
-  function fmtN(c, t) {
-    if (!t) return "";
-    return c + " / " + t + " days";
-  }
-  function pctColor(v) {
-    if (v === null) return "var(--muted)";
-    if (v >= 60) return "#34d399";
-    if (v >= 50) return "#f59e0b";
-    return "#f87171";
-  }
-
-  // Overall
-  var ov = acc.overall_pct;
-  document.getElementById("acc-overall").textContent = fmtPct(ov);
-  document.getElementById("acc-overall").style.color = pctColor(ov);
-  document.getElementById("acc-overall-n").textContent = fmtN(acc.overall_correct, acc.overall_total);
-
-  // Directional
-  var dv = acc.directional_pct;
-  document.getElementById("acc-dir").textContent = fmtPct(dv);
-  document.getElementById("acc-dir").style.color = pctColor(dv);
-  document.getElementById("acc-dir-n").textContent = fmtN(acc.directional_correct, acc.directional_total);
-
-  // By bucket
-  var bb = acc.by_bucket || {};
-  var bull = bb.BULLISH || {};
-  var bear = bb.BEARISH || {};
-
-  document.getElementById("acc-bull").textContent = fmtPct(bull.pct);
-  document.getElementById("acc-bull-n").textContent = fmtN(bull.correct, bull.total);
-  document.getElementById("acc-bear").textContent = fmtPct(bear.pct);
-  document.getElementById("acc-bear-n").textContent = fmtN(bear.correct, bear.total);
-
-  // Accuracy bar
-  var correctPct = ov || 0;
-  document.getElementById("acc-bar-correct").style.width = correctPct.toFixed(1) + "%";
-  document.getElementById("acc-bar-label").textContent =
-    (acc.overall_correct || 0) + " correct, " +
-    ((acc.overall_total || 0) - (acc.overall_correct || 0)) + " incorrect";
-
-  // Recent history table
-  var recent = acc.recent || [];
-  var histRows = "";
-  for (var i = 0; i < recent.length; i++) {
-    var e = recent[i];
-    var pending = (e.correct === null || e.correct === undefined);
-
-    var predColor = e.predicted === "BULLISH" ? "#34d399"
-                  : e.predicted === "BEARISH" ? "#f87171"
-                  : "#f59e0b";
-    var actColor  = e.actual_outcome === "BULLISH" ? "#34d399"
-                  : e.actual_outcome === "BEARISH"  ? "#f87171"
-                  : e.actual_outcome === "NEUTRAL"   ? "#f59e0b"
-                  : "var(--dim)";
-    var resIcon   = pending ? '<span style="color:var(--dim)">pending</span>'
-                  : e.correct ? '<span style="color:#34d399">&#10003;</span>'
-                  : '<span style="color:#f87171">&#10007;</span>';
-    var chgStr    = pending ? "-"
-                  : (e.spx_change_pct >= 0 ? "+" : "") + e.spx_change_pct.toFixed(2) + "%";
-    var chgColor  = pending ? "var(--dim)"
-                  : e.spx_change_pct > 0.1  ? "#34d399"
-                  : e.spx_change_pct < -0.1 ? "#f87171"
-                  : "#f59e0b";
-
-    histRows +=
-      '<div style="display:grid;grid-template-columns:90px 110px 70px 70px 70px 60px;' +
-      'padding:0.45rem 1.25rem;gap:0.5rem;border-bottom:1px solid var(--border);' +
-      'font-family:var(--mono);font-size:0.7rem;align-items:center;' +
-      (pending ? "opacity:0.55;" : "") + '">' +
-      '<div style="color:var(--muted)">' + e.date + '</div>' +
-      '<div style="color:' + predColor + ';font-size:0.65rem">' + (e.signal || "") + '</div>' +
-      '<div style="text-align:right;color:' + predColor + ';font-size:0.65rem">' + (e.predicted || "") + '</div>' +
-      '<div style="text-align:right;color:' + chgColor + '">' + chgStr + '</div>' +
-      '<div style="text-align:right;color:' + actColor + ';font-size:0.65rem">' + (e.actual_outcome || "-") + '</div>' +
-      '<div style="text-align:right">' + resIcon + '</div>' +
-      '</div>';
-  }
-  if (!histRows) {
-    histRows = '<div style="padding:1rem 1.25rem;font-family:var(--mono);font-size:0.75rem;color:var(--muted);">No history yet - check back after the next refresh.</div>';
-  }
-  document.getElementById("acc-history-rows").innerHTML = histRows;
-}
-
-async function loadData() {
-  document.getElementById("gauge-card").innerHTML =
-    '<div class="state-center"><span class="spinner"></span>Loading indicator...</div>';
-  document.getElementById("breakdown-card").style.display = "none";
-  document.getElementById("accuracy-card").style.display = "none";
-  document.getElementById("alert-zone").innerHTML = "";
-  try {
-    var resp = await fetch("/api/risk-indicator");
-    if (resp.status === 503) {
-      document.getElementById("gauge-card").innerHTML =
-        '<div class="state-center" style="color:var(--muted)">' +
-        'Risk indicator not yet computed.<br>It runs automatically during the nightly refresh.<br>' +
-        'You can trigger it now by visiting <a href="/refresh" style="color:var(--accent)">/refresh</a>.' +
-        '</div>';
-      return;
-    }
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    var data = await resp.json();
-    if (data.error) {
-      document.getElementById("gauge-card").innerHTML =
-        '<div class="state-error">&#9888; ' + data.error + '</div>';
-      return;
-    }
-    render(data);
-  } catch(e) {
-    document.getElementById("gauge-card").innerHTML =
-      '<div class="state-error">&#9888; Could not load: ' + e.message + '</div>';
-  }
-}
-
-loadData();
 </script>
 </body>
 </html>
