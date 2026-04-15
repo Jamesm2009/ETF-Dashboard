@@ -14,7 +14,7 @@
     --border:   #1d2f45;
     --border2:  #253650;
     --text:     #dce8f5;
-    --muted:    #cadbf0;
+    --muted:    #5a7494;
     --dim:      #2e4460;
     --risk-on:  #10b981;
     --lean-on:  #34d399;
@@ -253,6 +253,121 @@
     <div id="comp-rows"></div>
   </div>
 
+  <!-- Accuracy tracker card -->
+  <div class="card" id="accuracy-card" style="display:none;margin-bottom:1rem;">
+
+    <!-- Header row -->
+    <div style="
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);
+    ">
+      <div style="font-family:var(--mono);font-size:0.65rem;font-weight:600;
+                  letter-spacing:0.14em;text-transform:uppercase;color:var(--muted);">
+        Signal Accuracy Tracker
+      </div>
+      <div id="acc-days-note" style="font-family:var(--mono);font-size:0.62rem;color:var(--dim);"></div>
+    </div>
+
+    <!-- Top stats row -->
+    <div style="display:grid;grid-template-columns:1fr 1px 1fr 1px 1fr 1px 1fr;
+                border-bottom:1px solid var(--border);">
+
+      <!-- Overall -->
+      <div style="padding:1rem 1.25rem;text-align:center;">
+        <div style="font-family:var(--mono);font-size:0.58rem;letter-spacing:0.12em;
+                    text-transform:uppercase;color:var(--muted);margin-bottom:0.35rem;">
+          Overall
+        </div>
+        <div id="acc-overall" style="font-family:var(--mono);font-size:1.6rem;
+                                     font-weight:700;letter-spacing:-0.02em;">--</div>
+        <div id="acc-overall-n" style="font-family:var(--mono);font-size:0.62rem;
+                                        color:var(--muted);margin-top:0.2rem;"></div>
+      </div>
+
+      <div style="background:var(--border);"></div>
+
+      <!-- Directional -->
+      <div style="padding:1rem 1.25rem;text-align:center;">
+        <div style="font-family:var(--mono);font-size:0.58rem;letter-spacing:0.12em;
+                    text-transform:uppercase;color:var(--muted);margin-bottom:0.35rem;">
+          Directional
+        </div>
+        <div id="acc-dir" style="font-family:var(--mono);font-size:1.6rem;
+                                  font-weight:700;letter-spacing:-0.02em;">--</div>
+        <div id="acc-dir-n" style="font-family:var(--mono);font-size:0.62rem;
+                                    color:var(--muted);margin-top:0.2rem;"></div>
+      </div>
+
+      <div style="background:var(--border);"></div>
+
+      <!-- Bullish -->
+      <div style="padding:1rem 1.25rem;text-align:center;">
+        <div style="font-family:var(--mono);font-size:0.58rem;letter-spacing:0.12em;
+                    text-transform:uppercase;color:#34d399;margin-bottom:0.35rem;">
+          Bullish calls
+        </div>
+        <div id="acc-bull" style="font-family:var(--mono);font-size:1.6rem;
+                                   font-weight:700;color:#34d399;letter-spacing:-0.02em;">--</div>
+        <div id="acc-bull-n" style="font-family:var(--mono);font-size:0.62rem;
+                                     color:var(--muted);margin-top:0.2rem;"></div>
+      </div>
+
+      <div style="background:var(--border);"></div>
+
+      <!-- Bearish -->
+      <div style="padding:1rem 1.25rem;text-align:center;">
+        <div style="font-family:var(--mono);font-size:0.58rem;letter-spacing:0.12em;
+                    text-transform:uppercase;color:#f87171;margin-bottom:0.35rem;">
+          Bearish calls
+        </div>
+        <div id="acc-bear" style="font-family:var(--mono);font-size:1.6rem;
+                                   font-weight:700;color:#f87171;letter-spacing:-0.02em;">--</div>
+        <div id="acc-bear-n" style="font-family:var(--mono);font-size:0.62rem;
+                                     color:var(--muted);margin-top:0.2rem;"></div>
+      </div>
+    </div>
+
+    <!-- Accuracy bar (overall) -->
+    <div style="padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);">
+      <div style="display:flex;height:6px;border-radius:3px;overflow:hidden;
+                  background:rgba(255,255,255,0.04);gap:1px;" id="acc-bar">
+        <div id="acc-bar-correct" style="background:#16a34a;height:100%;border-radius:3px 0 0 3px;transition:width 0.5s ease;"></div>
+        <div id="acc-bar-wrong"   style="background:#dc2626;height:100%;border-radius:0 3px 3px 0;flex:1;"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;">
+        <span style="font-family:var(--mono);font-size:0.6rem;color:#16a34a;">Correct</span>
+        <span style="font-family:var(--mono);font-size:0.6rem;color:#6b7280;" id="acc-bar-label"></span>
+        <span style="font-family:var(--mono);font-size:0.6rem;color:#dc2626;">Incorrect</span>
+      </div>
+    </div>
+
+    <!-- Recent history table -->
+    <div style="padding:0.5rem 0;">
+      <div style="display:grid;grid-template-columns:90px 110px 70px 70px 70px 60px;
+                  padding:0.4rem 1.25rem;gap:0.5rem;border-bottom:1px solid var(--border);
+                  font-family:var(--mono);font-size:0.58rem;font-weight:600;
+                  letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);">
+        <div>Date</div>
+        <div>Signal</div>
+        <div style="text-align:right;">Predicted</div>
+        <div style="text-align:right;">SPY chg</div>
+        <div style="text-align:right;">Actual</div>
+        <div style="text-align:right;">Result</div>
+      </div>
+      <div id="acc-history-rows"></div>
+    </div>
+
+    <!-- Methodology note -->
+    <div style="padding:0.65rem 1.25rem;border-top:1px solid var(--border);
+                font-family:var(--mono);font-size:0.62rem;color:var(--dim);
+                line-height:1.6;">
+      Bullish correct if SPY next day &gt; +0.1% &nbsp;&middot;&nbsp;
+      Bearish correct if SPY next day &lt; -0.1% &nbsp;&middot;&nbsp;
+      Neutral correct if SPY next day within &plusmn;0.1% &nbsp;&middot;&nbsp;
+      Rolling 252-day window
+    </div>
+  </div>
+
   <div class="legend-card">
     <div class="legend-item">
       <div class="legend-dot" style="background:#ef4444"></div>
@@ -262,17 +377,17 @@
     <div class="legend-item">
       <div class="legend-dot" style="background:#f87171"></div>
       <div style="color:#fca5a5">Lean Off</div>
-      <div style="color:var(--muted)">-1 to -0.25</div>
+      <div style="color:var(--muted)">-1 to -1/4</div>
     </div>
     <div class="legend-item">
       <div class="legend-dot" style="background:#f59e0b"></div>
       <div style="color:#fcd34d">Neutral</div>
-      <div style="color:var(--muted)">-0.25 to +0.254</div>
+      <div style="color:var(--muted)">-1/4 to +1/4</div>
     </div>
     <div class="legend-item">
       <div class="legend-dot" style="background:#34d399"></div>
       <div style="color:#6ee7b7">Lean On</div>
-      <div style="color:var(--muted)">+0.25 to +1</div>
+      <div style="color:var(--muted)">+1/4 to +1</div>
     </div>
     <div class="legend-item">
       <div class="legend-dot" style="background:#10b981"></div>
@@ -485,12 +600,118 @@ function render(data) {
   }
   document.getElementById("comp-rows").innerHTML = rows;
   document.getElementById("breakdown-card").style.display = "block";
+
+  renderAccuracy(data.accuracy);
+}
+
+function renderAccuracy(acc) {
+  var card = document.getElementById("accuracy-card");
+  if (!acc || acc.overall_total === 0) {
+    card.style.display = "none";
+    return;
+  }
+  card.style.display = "block";
+
+  // Days progress note
+  var daysNote = acc.days_completed + " / " + acc.days_target + " trading days tracked";
+  if (acc.days_completed < acc.days_target) {
+    daysNote += " (building history)";
+  }
+  document.getElementById("acc-days-note").textContent = daysNote;
+
+  // Helper: format pct
+  function fmtPct(v, n) {
+    if (v === null || v === undefined) return "--";
+    return v.toFixed(1) + "%";
+  }
+  function fmtN(c, t) {
+    if (!t) return "";
+    return c + " / " + t + " days";
+  }
+  function pctColor(v) {
+    if (v === null) return "var(--muted)";
+    if (v >= 60) return "#34d399";
+    if (v >= 50) return "#f59e0b";
+    return "#f87171";
+  }
+
+  // Overall
+  var ov = acc.overall_pct;
+  document.getElementById("acc-overall").textContent = fmtPct(ov);
+  document.getElementById("acc-overall").style.color = pctColor(ov);
+  document.getElementById("acc-overall-n").textContent = fmtN(acc.overall_correct, acc.overall_total);
+
+  // Directional
+  var dv = acc.directional_pct;
+  document.getElementById("acc-dir").textContent = fmtPct(dv);
+  document.getElementById("acc-dir").style.color = pctColor(dv);
+  document.getElementById("acc-dir-n").textContent = fmtN(acc.directional_correct, acc.directional_total);
+
+  // By bucket
+  var bb = acc.by_bucket || {};
+  var bull = bb.BULLISH || {};
+  var bear = bb.BEARISH || {};
+
+  document.getElementById("acc-bull").textContent = fmtPct(bull.pct);
+  document.getElementById("acc-bull-n").textContent = fmtN(bull.correct, bull.total);
+  document.getElementById("acc-bear").textContent = fmtPct(bear.pct);
+  document.getElementById("acc-bear-n").textContent = fmtN(bear.correct, bear.total);
+
+  // Accuracy bar
+  var correctPct = ov || 0;
+  document.getElementById("acc-bar-correct").style.width = correctPct.toFixed(1) + "%";
+  document.getElementById("acc-bar-label").textContent =
+    (acc.overall_correct || 0) + " correct, " +
+    ((acc.overall_total || 0) - (acc.overall_correct || 0)) + " incorrect";
+
+  // Recent history table
+  var recent = acc.recent || [];
+  var histRows = "";
+  for (var i = 0; i < recent.length; i++) {
+    var e = recent[i];
+    var pending = (e.correct === null || e.correct === undefined);
+
+    var predColor = e.predicted === "BULLISH" ? "#34d399"
+                  : e.predicted === "BEARISH" ? "#f87171"
+                  : "#f59e0b";
+    var actColor  = e.actual_outcome === "BULLISH" ? "#34d399"
+                  : e.actual_outcome === "BEARISH"  ? "#f87171"
+                  : e.actual_outcome === "NEUTRAL"   ? "#f59e0b"
+                  : "var(--dim)";
+    var resIcon   = pending ? '<span style="color:var(--dim)">pending</span>'
+                  : e.correct ? '<span style="color:#34d399">&#10003;</span>'
+                  : '<span style="color:#f87171">&#10007;</span>';
+    var chgStr    = pending ? "-"
+                  : (e.spx_change_pct >= 0 ? "+" : "") + e.spx_change_pct.toFixed(2) + "%";
+    var chgColor  = pending ? "var(--dim)"
+                  : e.spx_change_pct > 0.1  ? "#34d399"
+                  : e.spx_change_pct < -0.1 ? "#f87171"
+                  : "#f59e0b";
+
+    histRows +=
+      '<div style="display:grid;grid-template-columns:90px 110px 70px 70px 70px 60px;' +
+      'padding:0.45rem 1.25rem;gap:0.5rem;border-bottom:1px solid var(--border);' +
+      'font-family:var(--mono);font-size:0.7rem;align-items:center;' +
+      (pending ? "opacity:0.55;" : "") + '">' +
+      '<div style="color:var(--muted)">' + e.date + '</div>' +
+      '<div style="color:' + predColor + ';font-size:0.65rem">' + (e.signal || "") + '</div>' +
+      '<div style="text-align:right;color:' + predColor + ';font-size:0.65rem">' + (e.predicted || "") + '</div>' +
+      '<div style="text-align:right;color:' + chgColor + '">' + chgStr + '</div>' +
+      '<div style="text-align:right;color:' + actColor + ';font-size:0.65rem">' + (e.actual_outcome || "-") + '</div>' +
+      '<div style="text-align:right">' + resIcon + '</div>' +
+      '</div>';
+  }
+  if (!histRows) {
+    histRows = '<div style="padding:1rem 1.25rem;font-family:var(--mono);font-size:0.75rem;color:var(--muted);">No history yet - check back after the next refresh.</div>';
+  }
+  document.getElementById("acc-history-rows").innerHTML = histRows;
 }
 
 async function loadData() {
   document.getElementById("gauge-card").innerHTML =
     '<div class="state-center"><span class="spinner"></span>Loading indicator...</div>';
   document.getElementById("breakdown-card").style.display = "none";
+  document.getElementById("accuracy-card").style.display = "none";
   document.getElementById("alert-zone").innerHTML = "";
   try {
     var resp = await fetch("/api/risk-indicator");
