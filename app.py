@@ -263,6 +263,39 @@ def price_bar_data(closes):
     pct    = round((last - lo) / (hi - lo) * 100, 1) if hi > lo else 50.0
     return lo, hi, last, pct
 
+def volume_flow(df):
+    """
+    Compare 5-day avg volume vs 21-day avg volume to determine flow direction.
+    Compare current ratio vs ratio from 5 days ago to determine if flow is
+    strengthening or weakening.
+
+    Returns (arrow, change):
+      arrow:  'up'   = inflow  (5d avg > 21d avg)
+              'down' = outflow (5d avg < 21d avg)
+      change: 'pos'  = flow strengthening vs last week
+              'neg'  = flow weakening vs last week
+      Both return None if insufficient data.
+    """
+    if "volume" not in df.columns:
+        return None, None
+    vol = df["volume"].dropna()
+    if len(vol) < 26:
+        return None, None
+
+    # Current: 5-day avg vs 21-day avg
+    avg5_now  = vol.iloc[-5:].mean()
+    avg21_now = vol.iloc[-21:].mean()
+    ratio_now = avg5_now / avg21_now if avg21_now > 0 else 1.0
+
+    # One week ago: 5-day avg (days 6-10) vs 21-day avg (days 6-26)
+    avg5_ago  = vol.iloc[-10:-5].mean()
+    avg21_ago = vol.iloc[-26:-5].mean()
+    ratio_ago = avg5_ago / avg21_ago if avg21_ago > 0 else 1.0
+
+    arrow  = "up"  if ratio_now >= 1.0 else "down"
+    change = "pos" if ratio_now >= ratio_ago else "neg"
+
+    return arrow, change
 
 def rebuild_ranked():
     rows     = list(cache["data"].values())
