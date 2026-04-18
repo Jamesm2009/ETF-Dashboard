@@ -386,6 +386,10 @@ def run_update():
                     ""
                 )
                 lo, hi, last_px, bar_pct = price_bar_data(closes)
+                vol_arrow, vol_change = volume_flow(df)
+
+                row = {
+
 
                 row = {
                     "symbol":        ticker,
@@ -406,6 +410,8 @@ def run_update():
                     "high3":     hi,
                     "last_price": last_px,
                     "bar_pct":   bar_pct,
+                    "vol_arrow":  vol_arrow,
+                    "vol_change": vol_change,
                     "rank":      None,
                 }
 
