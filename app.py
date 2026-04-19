@@ -389,9 +389,6 @@ def run_update():
                 vol_arrow, vol_change = volume_flow(df)
 
                 row = {
-
-
-                row = {
                     "symbol":        ticker,
                     "name":          name,
                     "type":          ftype,
