@@ -4,21 +4,28 @@ risk_indicator.py  -  Drop into the root of your ETF Dashboard project.
 Composite Risk On/Off Indicator (six components, 252-day z-scores):
   1. SPY/SH ratio      (20%)  Broad equity sentiment, no leveraged-ETF drift
   2. TQQQ/SQQQ ratio   (15%)  Tech/growth appetite, tends to lead market
-  3. HYG/IEI ratio     (25%)  Credit vs treasury - leads equity by 3-10 days
-  4. CPER/GLD ratio    (20%)  Copper vs gold - growth vs fear
+  3. HYG/IEI ratio     (25%)  Credit vs treasury, leads equity by 3-10 days
+  4. CPER/GLD ratio    (20%)  Copper vs gold, growth vs fear
   5. FXY (yen ETF)     ( 7.5%) Safe-haven FX, inverted so +z = risk-on
   6. FXF (franc ETF)   ( 7.5%) Safe-haven FX, inverted so +z = risk-on
   7. VIXY/VIXM ratio   ( 5%)  VIX term structure, reversal alert when extreme
 
-Accuracy tracker:
+Accuracy tracker (10-day forward window):
   Each daily run records today's signal + today's SPY close.
-  The next run resolves yesterday's entry: was the predicted direction correct?
+  Entries are resolved when SPY data for 10 trading days forward is available.
   Builds a rolling 252-entry log in Redis. Stats accumulate day by day.
 
   Prediction mapping:
-    Risk On / Lean Risk On  -> BULLISH  -> correct if SPY next day > +0.1%
-    Neutral                 -> NEUTRAL  -> correct if SPY next day in [-0.1%, +0.1%]
-    Lean Risk Off / Risk Off-> BEARISH  -> correct if SPY next day < -0.1%
+    Risk On / Lean Risk On  -> BULLISH -> correct if SPY +10d return > +1.5%
+    Neutral                 -> NEUTRAL -> correct if SPY +10d return within +/-1.5%
+    Lean Risk Off / Risk Off-> BEARISH -> correct if SPY +10d return < -1.5%
+
+  Why 1.5% neutral band:
+    Over 10 trading days SPY's average absolute move is 2-3%.
+    A +/-0.1% band (suitable for next-day) would classify almost everything
+    as directional over 10 days, leaving the neutral bucket nearly empty.
+    +/-1.5% captures genuinely flat 10-day periods (~15-20% of outcomes)
+    while treating meaningful moves as directional.
 
 USAGE in app.py:
 
@@ -29,7 +36,7 @@ USAGE in app.py:
   Read from cache (in routes):
     from risk_indicator import get_cached_risk
     data = get_cached_risk(redis_get_fn=redis_get)
-    # data now includes data["accuracy"] with full stats
+    # data["accuracy"] contains full stats and recent history
 """
 
 import os
@@ -40,7 +47,14 @@ from datetime import datetime, date, timedelta
 TIINGO_TOKEN = os.environ.get("TIINGO_TOKEN", "")
 TIINGO_BASE  = "https://api.tiingo.com/tiingo/daily"
 REDIS_KEY    = "risk_indicator_v2"
-HISTORY_KEY  = "risk_indicator_history_v1"
+HISTORY_KEY  = "risk_indicator_history_v2"   # v2: 10-day window
+
+# ---------------------------------------------------------------------------
+# Accuracy tracker settings  (change these to experiment)
+# ---------------------------------------------------------------------------
+FORWARD_DAYS = 10    # trading days forward to measure SPY return
+NEUTRAL_BAND = 1.5   # +/- % threshold; inside = NEUTRAL, outside = directional
+MAX_HISTORY  = 262   # 252 completed + up to 10 pending at any time
 
 # ---------------------------------------------------------------------------
 # Component definitions
@@ -180,10 +194,20 @@ def _classify(composite):
 
 
 def _signal_to_bucket(signal):
-    """Collapse the five signals into three directional predictions."""
+    """Collapse five signals into three directional predictions."""
     if signal in ("Risk On", "Lean Risk On"):
         return "BULLISH"
     elif signal in ("Risk Off", "Lean Risk Off"):
+        return "BEARISH"
+    else:
+        return "NEUTRAL"
+
+
+def _outcome(change_pct):
+    """Classify a percentage change into BULLISH / NEUTRAL / BEARISH."""
+    if change_pct > NEUTRAL_BAND:
+        return "BULLISH"
+    elif change_pct < -NEUTRAL_BAND:
         return "BEARISH"
     else:
         return "NEUTRAL"
@@ -196,7 +220,7 @@ def _compute():
     """
     Fetch all tickers, compute composite.
     Returns (result_dict, spy_prices) or (None, None).
-    spy_prices is passed to the accuracy tracker to avoid a second API call.
+    spy_prices is reused by the accuracy tracker to avoid a second API call.
     """
     print("  [risk] Starting fetch...")
 
@@ -256,6 +280,7 @@ def _compute():
             scored.append(entry)
             continue
 
+        # Invert: rising yen/franc = safe-haven demand = risk-off
         entry.update(zscore=round(-z, 3), status="ok")
         scored.append(entry)
 
@@ -289,42 +314,89 @@ def _compute():
         "timestamp":        datetime.now().strftime("%Y-%m-%d %H:%M UTC"),
     }
 
-    # Return SPY prices alongside result so accuracy tracker can reuse them
-    spy_prices = prices.get("SPY")
-    return result, spy_prices
+    return result, prices.get("SPY")
 
 # ---------------------------------------------------------------------------
 # Accuracy tracker
 # ---------------------------------------------------------------------------
 
-def _get_spy_change(spy_prices):
+def _resolve_pending(history, spy_prices):
     """
-    Given the SPY price dict {date_str: price}, return:
-      (today_date_str, today_close, prev_date_str, change_pct)
-    or None if insufficient data.
+    Scan all pending history entries and resolve any where the
+    FORWARD_DAYS-th trading day is now available in spy_prices.
+
+    This is called once per daily refresh. It handles:
+      - Multiple entries becoming resolvable at once (e.g. after weekends)
+      - Idempotency: already-resolved entries are skipped
+      - Missing signal dates in SPY series (skipped gracefully)
+
+    Returns the number of entries newly resolved.
     """
-    if not spy_prices or len(spy_prices) < 2:
-        return None
-    dates = sorted(spy_prices.keys())
-    today_dt  = dates[-1]
-    prev_dt   = dates[-2]
-    today_px  = spy_prices[today_dt]
-    prev_px   = spy_prices[prev_dt]
-    change    = round((today_px - prev_px) / prev_px * 100, 3)
-    return today_dt, round(today_px, 2), prev_dt, change
+    if not spy_prices:
+        return 0
+
+    # Build a lookup: date_string -> index in sorted date list
+    spy_dates  = sorted(spy_prices.keys())
+    date_index = {d: i for i, d in enumerate(spy_dates)}
+    resolved   = 0
+
+    for entry in history:
+        # Skip already-resolved entries
+        if entry.get("correct") is not None:
+            continue
+
+        signal_date  = entry.get("date")
+        signal_close = entry.get("spx_close")
+
+        if not signal_date or signal_close is None:
+            continue
+
+        if signal_date not in date_index:
+            # Signal date predates our SPY history window - cannot resolve
+            continue
+
+        forward_idx = date_index[signal_date] + FORWARD_DAYS
+        if forward_idx >= len(spy_dates):
+            # The 10th trading day forward has not yet occurred
+            continue
+
+        forward_date  = spy_dates[forward_idx]
+        forward_close = spy_prices[forward_date]
+        change_pct    = round(
+            (forward_close - signal_close) / signal_close * 100, 3
+        )
+        actual = _outcome(change_pct)
+
+        entry["spx_forward_date"]  = forward_date
+        entry["spx_forward_close"] = round(forward_close, 2)
+        entry["spx_change_pct"]    = change_pct
+        entry["actual_outcome"]    = actual
+        entry["correct"]           = (entry.get("predicted") == actual)
+        resolved += 1
+
+        print(
+            f"  [risk] Resolved {signal_date} -> {forward_date} "
+            f"({change_pct:+.2f}%): "
+            f"predicted={entry['predicted']} actual={actual} "
+            f"({'CORRECT' if entry['correct'] else 'WRONG'})"
+        )
+
+    return resolved
 
 
 def _compute_accuracy_stats(completed):
     """Compute accuracy statistics from a list of completed history entries."""
     if not completed:
         return {
-            "overall_pct":        None,
-            "overall_correct":    0,
-            "overall_total":      0,
-            "directional_pct":    None,
-            "directional_correct":0,
-            "directional_total":  0,
-            "by_bucket":          {},
+            "overall_pct":         None,
+            "overall_correct":     0,
+            "overall_total":       0,
+            "directional_pct":     None,
+            "directional_correct": 0,
+            "directional_total":   0,
+            "by_bucket":           {},
+            "forward_days":        FORWARD_DAYS,
+            "neutral_band":        NEUTRAL_BAND,
         }
 
     correct = sum(1 for e in completed if e.get("correct"))
@@ -341,7 +413,7 @@ def _compute_accuracy_stats(completed):
             "pct":     round(c / n * 100, 1) if n > 0 else None,
         }
 
-    # Directional accuracy: exclude neutral predictions (hardest to get right)
+    # Directional accuracy excludes neutral predictions
     directional = [e for e in completed if e.get("predicted") != "NEUTRAL"]
     dir_n = len(directional)
     dir_c = sum(1 for e in directional if e.get("correct"))
@@ -350,95 +422,86 @@ def _compute_accuracy_stats(completed):
         "overall_pct":         round(correct / total * 100, 1),
         "overall_correct":     correct,
         "overall_total":       total,
-        "directional_pct":     round(dir_c / dir_n * 100, 1) if dir_n > 0 else None,
+        "directional_pct":     round(dir_c / dir_n * 100, 1) if dir_n else None,
         "directional_correct": dir_c,
         "directional_total":   dir_n,
         "by_bucket":           by_bucket,
+        "forward_days":        FORWARD_DAYS,
+        "neutral_band":        NEUTRAL_BAND,
     }
 
 
 def _update_history(redis_get_fn, redis_set_fn, signal, composite, spy_prices):
     """
-    Update rolling 252-day accuracy history in Redis.
+    Update rolling accuracy history in Redis.
 
     Steps:
       1. Load existing history from Redis.
-      2. Resolve the most recent pending entry using today's SPY change.
-      3. Append a new entry for today's signal.
-      4. Trim to 253 entries (252 completed + 1 pending).
-      5. Compute accuracy stats and save.
+      2. Resolve ALL pending entries where 10 forward trading days of
+         SPY data are now available.
+      3. Append today's new pending entry (idempotent if already present).
+      4. Trim to MAX_HISTORY entries.
+      5. Compute and return accuracy stats.
 
-    Returns accuracy stats dict.
+    Returns accuracy stats dict, or None if spy_prices unavailable.
     """
-    spy_info = _get_spy_change(spy_prices)
-    if spy_info is None:
-        print("  [risk] Not enough SPY data for accuracy tracking")
+    if not spy_prices:
+        print("  [risk] No SPY prices - accuracy tracking skipped")
         return None
 
-    today_dt, today_close, prev_dt, change_pct = spy_info
+    spy_dates = sorted(spy_prices.keys())
+    if not spy_dates:
+        return None
 
-    # Determine today's actual SPY outcome
-    if change_pct > 0.1:
-        actual = "BULLISH"
-    elif change_pct < -0.1:
-        actual = "BEARISH"
-    else:
-        actual = "NEUTRAL"
+    today_dt    = spy_dates[-1]
+    today_close = round(spy_prices[today_dt], 2)
 
-    # Load history (list of dicts, chronological)
+    # Load history
     history = redis_get_fn(HISTORY_KEY) or []
 
-    # --- Resolve yesterday's pending entry ---
-    # The last entry has spx_change_pct=None because we didn't know
-    # the outcome yet when we wrote it. Fill it in now.
-    if history:
-        last = history[-1]
-        if (last.get("spx_change_pct") is None
-                and last.get("date") != today_dt):
-            last["spx_change_pct"]  = change_pct
-            last["actual_outcome"]  = actual
-            last["correct"]         = (last.get("predicted") == actual)
-            print(
-                f"  [risk] Resolved {last['date']}: "
-                f"predicted={last['predicted']} actual={actual} "
-                f"({'CORRECT' if last['correct'] else 'WRONG'})"
-            )
+    # Resolve all pending entries that now have 10-day forward data
+    n_resolved = _resolve_pending(history, spy_prices)
+    if n_resolved:
+        print(f"  [risk] Resolved {n_resolved} pending entries")
 
-    # --- Append today's new pending entry ---
-    # Check we haven't already written today (idempotent)
+    # Append today's entry (skip if already recorded - idempotent)
     if not history or history[-1].get("date") != today_dt:
         history.append({
-            "date":           today_dt,
-            "signal":         signal,
-            "composite":      composite,
-            "predicted":      _signal_to_bucket(signal),
-            "spx_close":      today_close,
-            "spx_change_pct": None,   # resolved tomorrow
-            "actual_outcome": None,
-            "correct":        None,
+            "date":              today_dt,
+            "signal":            signal,
+            "composite":         composite,
+            "predicted":         _signal_to_bucket(signal),
+            "spx_close":         today_close,
+            "spx_forward_date":  None,
+            "spx_forward_close": None,
+            "spx_change_pct":    None,   # filled in FORWARD_DAYS trading days later
+            "actual_outcome":    None,
+            "correct":           None,
         })
-        print(f"  [risk] History: added {today_dt} signal={signal}")
+        print(f"  [risk] History: recorded {today_dt} signal={signal} "
+              f"(resolves after {FORWARD_DAYS} trading days)")
     else:
-        print(f"  [risk] History: {today_dt} already recorded, skipping")
+        print(f"  [risk] History: {today_dt} already recorded")
 
-    # Keep at most 253 entries (252 completed + 1 today's pending)
-    history = history[-253:]
+    # Trim to keep only the most recent MAX_HISTORY entries
+    history = history[-MAX_HISTORY:]
 
-    # Compute stats from all completed (resolved) entries
+    # Build stats from completed (resolved) entries only
     completed = [e for e in history if e.get("correct") is not None]
     stats = _compute_accuracy_stats(completed)
-    stats["days_tracked"]    = len(history)
-    stats["days_completed"]  = len(completed)
-    stats["days_target"]     = 252
+    stats["days_tracked"]   = len(history)
+    stats["days_completed"] = len(completed)
+    stats["days_pending"]   = len(history) - len(completed)
+    stats["days_target"]    = 252
+    stats["recent"]         = list(reversed(history[-20:]))
 
-    # Include last 20 entries for the history table (newest first)
-    stats["recent"] = list(reversed(history[-20:]))
-
-    # Save updated history
+    # Save
     redis_set_fn(HISTORY_KEY, history, ex_seconds=200000)
+    acc = stats.get("overall_pct")
     print(
-        f"  [risk] Accuracy: {stats['overall_pct']}% "
-        f"({stats['overall_correct']}/{stats['overall_total']} days)"
+        f"  [risk] Accuracy ({FORWARD_DAYS}d): "
+        f"{acc}% ({stats['overall_correct']}/{stats['overall_total']} resolved, "
+        f"{stats['days_pending']} pending)"
     )
     return stats
 
@@ -462,7 +525,6 @@ def refresh_risk_data(redis_set_fn, redis_get_fn=None):
         print("  [risk] Compute failed - nothing saved to Redis")
         return None
 
-    # Update accuracy history if redis_get_fn provided
     accuracy = None
     if redis_get_fn is not None and spy_prices is not None:
         try:
@@ -477,7 +539,6 @@ def refresh_risk_data(redis_set_fn, redis_get_fn=None):
             print(f"  [risk] Accuracy update error: {e}")
 
     result["accuracy"] = accuracy
-
     redis_set_fn(REDIS_KEY, result, ex_seconds=90000)
     print(f"  [risk] Redis saved: {result['signal']} ({result['composite']:+.2f})")
     return result
